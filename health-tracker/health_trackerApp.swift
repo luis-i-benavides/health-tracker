@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct health_trackerApp: App {
+    @State private var store = HealthStore()
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(store)
         }
     }
 }

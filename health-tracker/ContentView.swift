@@ -7,18 +7,28 @@
 
 import SwiftUI
 
+/// App shell using the chosen layout for each screen.
+/// Logging a dose happens from the Today timeline via `LogMedicationQuickView`.
 struct ContentView: View {
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        TabView {
+            Tab("Today", systemImage: "heart.text.clipboard") {
+                TodayTimelineView()
+            }
+            Tab("Symptoms", systemImage: "stethoscope") {
+                LogSymptomCompactView()
+            }
+            Tab("Reminders", systemImage: "bell") {
+                RemindersCardView()
+            }
+            Tab("Import", systemImage: "square.and.arrow.down") {
+                ImportCSVStepsView()
+            }
         }
-        .padding()
     }
 }
 
-#Preview {
+#Preview("App – Default") {
     ContentView()
+        .environment(HealthStore.preview)
 }
