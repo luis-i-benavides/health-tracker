@@ -57,6 +57,8 @@ struct MedicationLog: Identifiable, Hashable {
     var unit: String
     var status: DoseStatus
     var note: String
+    /// The user confirmed logging this dose despite an as-needed limit warning.
+    var confirmedOverLimit: Bool
 
     /// The full scheduled date and time, if this dose was scheduled.
     var scheduledDate: Date? {
@@ -72,7 +74,8 @@ struct MedicationLog: Identifiable, Hashable {
         amountTaken: Double,
         unit: String,
         status: DoseStatus,
-        note: String = ""
+        note: String = "",
+        confirmedOverLimit: Bool = false
     ) {
         self.id = id
         self.medicationID = medicationID
@@ -83,5 +86,6 @@ struct MedicationLog: Identifiable, Hashable {
         self.unit = unit
         self.status = status
         self.note = note
+        self.confirmedOverLimit = confirmedOverLimit
     }
 }

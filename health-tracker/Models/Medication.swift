@@ -119,6 +119,14 @@ struct Medication: Identifiable, Hashable {
     /// Times of day a dose is due (empty for as-needed medications).
     var times: [TimeOfDay] { schedule.times }
 
+    /// Whether doses are due on `day`: on or after `addedOn`, within the course (if any),
+    /// and on one of the schedule's days. Always false for as-needed medications.
+    func isScheduled(on day: Date, calendar: Calendar = .current) -> Bool {
+        guard calendar.startOfDay(for: addedOn) <= calendar.startOfDay(for: day) else { return false }
+        if let course, !course.isActive(on: day, calendar: calendar) { return false }
+        return schedule.isScheduled(on: day, calendar: calendar)
+    }
+
     /// Total drug per dose, when it can be computed from the strength.
     /// Not computed for percentages, insulin-style "units" doses, or concentrations
     /// measured in something other than mL.

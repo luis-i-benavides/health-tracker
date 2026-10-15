@@ -11,11 +11,18 @@ import SwiftUI
 struct health_trackerApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var store = HealthStore()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(store)
+        }
+        .onChange(of: scenePhase) {
+            // Roll course reminders forward (iOS limits how many can be queued at once).
+            if scenePhase == .active {
+                Task { await store.refreshRemindersIfAuthorized() }
+            }
         }
     }
 }

@@ -65,6 +65,25 @@ struct PrescriptionFormatter {
         return parts.joined(separator: " ") + "."
     }
 
+    /// Short instruction for a reminder notification: what to take and how, without the
+    /// schedule (the notification itself is the schedule), e.g. "Take 1 capsule (500 mg) by mouth with food."
+    func reminderBody(for medication: Medication) -> String {
+        var parts = [medication.route.verb]
+        var dose = quantityText(medication.quantity, form: medication.form)
+        if let amount = medication.doseAmount {
+            dose += " (\(amountText(amount)))"
+        }
+        parts.append(dose)
+        if let phrase = medication.route.phrase {
+            parts.append(phrase)
+        }
+        let inlineFood = medication.foodRules.filter(\.isInline).sorted().map(\.phrase)
+        if !inlineFood.isEmpty {
+            parts.append(inlineFood.formatted(.list(type: .and).locale(locale)))
+        }
+        return parts.joined(separator: " ") + "."
+    }
+
     /// Separate safety lines shown under the instruction.
     func warnings(for medication: Medication) -> [String] {
         var lines: [String] = []

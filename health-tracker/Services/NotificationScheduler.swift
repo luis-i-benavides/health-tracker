@@ -6,15 +6,14 @@
 import Foundation
 import UserNotifications
 
-/// Schedules daily repeating local notifications for medication doses and measurement reminders.
-///
-/// Identifiers are deterministic (`med.<uuid>.<HHmm>`, `measure.<kind>.<HHmm>`), so rescheduling
-/// replaces existing requests rather than duplicating them.
+/// Schedules local notifications for medication doses and measurement reminders, following
+/// the plan from `ReminderPlanner`. Identifiers are deterministic, so rescheduling replaces
+/// existing requests rather than duplicating them.
 struct NotificationScheduler {
-    static let medicationPrefix = "med."
-    static let measurementPrefix = "measure."
+    static let medicationPrefix = ReminderPlanner.medicationPrefix
+    static let measurementPrefix = ReminderPlanner.measurementPrefix
     /// iOS keeps at most 64 pending local notifications per app.
-    static let systemPendingLimit = 64
+    static let systemPendingLimit = ReminderPlanner.systemPendingLimit
 
     enum SchedulingError: LocalizedError {
         case tooManyNotifications(requested: Int)
@@ -60,20 +59,23 @@ struct NotificationScheduler {
             .sorted { ($0.next ?? .distantFuture) < ($1.next ?? .distantFuture) }
     }
 
-    /// Replaces all medication and measurement notifications with the given schedule.
-    func reschedule(medications: [Medication], measurementReminders: [MeasurementReminder]) async throws {
-        let requests = Self.medicationRequests(for: medications)
-            + Self.measurementRequests(for: measurementReminders)
+    /// Replaces all medication and measurement notifications with the plan from `ReminderPlanner`,
+    /// and returns the plan so callers can report courses whose reminders end early.
+    @discardableResult
+    func reschedule(medications: [Medication], measurementReminders: [MeasurementReminder]) async throws -> ReminderPlan {
+        let plan = ReminderPlanner.plan(medications: medications, measurementReminders: measurementReminders)
 
         await removeAll(withPrefixes: [Self.medicationPrefix, Self.measurementPrefix])
-
-        for request in requests.prefix(Self.systemPendingLimit) {
-            try await center.add(request)
+        for reminder in plan.reminders {
+            try await center.add(Self.request(for: reminder))
         }
 
-        if requests.count > Self.systemPendingLimit {
-            throw SchedulingError.tooManyNotifications(requested: requests.count)
+        if plan.droppedRepeatingCount > 0 {
+            throw SchedulingError.tooManyNotifications(
+                requested: plan.reminders.count + plan.droppedRepeatingCount
+            )
         }
+        return plan
     }
 
     func removeAll(withPrefixes prefixes: [String]) async {
@@ -84,44 +86,20 @@ struct NotificationScheduler {
         center.removePendingNotificationRequests(withIdentifiers: ids)
     }
 
-    // MARK: - Request builders
+    // MARK: - Request builder
 
-    static func medicationRequests(for medications: [Medication]) -> [UNNotificationRequest] {
-        medications.flatMap { medication in
-            medication.times.map { time in
-                let content = UNMutableNotificationContent()
-                content.title = "Time for \(medication.name)"
-                content.body = "Take \(medication.displayDosage) (scheduled \(time.formatted24h))."
-                content.sound = .default
-                content.userInfo = ["medicationID": medication.id.uuidString]
-
-                return UNNotificationRequest(
-                    identifier: "\(medicationPrefix)\(medication.id.uuidString).\(identifierSuffix(time))",
-                    content: content,
-                    trigger: UNCalendarNotificationTrigger(dateMatching: time.dateComponents, repeats: true)
-                )
-            }
+    static func request(for reminder: PlannedReminder) -> UNNotificationRequest {
+        let content = UNMutableNotificationContent()
+        content.title = reminder.title
+        content.body = reminder.body
+        content.sound = .default
+        if let medicationID = reminder.medicationID {
+            content.userInfo = ["medicationID": medicationID.uuidString]
         }
-    }
-
-    static func measurementRequests(for reminders: [MeasurementReminder]) -> [UNNotificationRequest] {
-        reminders.filter(\.isEnabled).flatMap { reminder in
-            reminder.times.map { time in
-                let content = UNMutableNotificationContent()
-                content.title = "Measure your \(reminder.kind.label.lowercased())"
-                content.body = "It's \(time.formatted24h) — time to take a reading."
-                content.sound = .default
-
-                return UNNotificationRequest(
-                    identifier: "\(measurementPrefix)\(reminder.kind.rawValue).\(identifierSuffix(time))",
-                    content: content,
-                    trigger: UNCalendarNotificationTrigger(dateMatching: time.dateComponents, repeats: true)
-                )
-            }
-        }
-    }
-
-    private static func identifierSuffix(_ time: TimeOfDay) -> String {
-        String(format: "%02d%02d", time.hour, time.minute)
+        return UNNotificationRequest(
+            identifier: reminder.identifier,
+            content: content,
+            trigger: UNCalendarNotificationTrigger(dateMatching: reminder.dateComponents, repeats: reminder.repeats)
+        )
     }
 }

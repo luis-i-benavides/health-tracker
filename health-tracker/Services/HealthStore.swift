@@ -5,6 +5,7 @@
 
 import Foundation
 import Observation
+import UserNotifications
 
 /// A scheduled dose on a given day, paired with the log that satisfied it (if any).
 struct DoseSlot: Identifiable, Hashable {
@@ -47,6 +48,9 @@ final class HealthStore {
     var lastSchedulingError: String?
     /// Incremented after each reschedule so views can refresh what's pending.
     private(set) var scheduleVersion = 0
+    /// Courses whose remaining doses didn't all fit in iOS's 64-notification limit, with the
+    /// last dose that does have a reminder. Topped up each time the app becomes active.
+    private(set) var coursesWithRemindersEndingEarly: [Medication.ID: Date] = [:]
 
     private let scheduler = NotificationScheduler()
 
@@ -91,8 +95,8 @@ final class HealthStore {
             $0.scheduledTime != nil && calendar.isDate($0.scheduledDay, inSameDayAs: day)
         }
         return medications
-            // No slots before the medication was added, so earlier days aren't full of "missed".
-            .filter { calendar.startOfDay(for: $0.addedOn) <= calendar.startOfDay(for: day) }
+            // Respects start date, course length and weekdays; as-needed medications have no slots.
+            .filter { $0.isScheduled(on: day, calendar: calendar) }
             .flatMap { medication in
                 medication.times.map { time in
                     let log = dayLogs.first { $0.medicationID == medication.id && $0.scheduledTime == time }
@@ -198,13 +202,28 @@ final class HealthStore {
                 lastSchedulingError = "Notifications are turned off for Health Tracker in Settings."
                 return
             }
-            try await scheduler.reschedule(
+            let plan = try await scheduler.reschedule(
                 medications: medicationRemindersEnabled ? medications : [],
                 measurementReminders: measurementReminders
             )
+            coursesWithRemindersEndingEarly = plan.lastScheduledDose
             lastSchedulingError = nil
         } catch {
             lastSchedulingError = error.localizedDescription
+        }
+    }
+
+    /// Re-plans reminders when the app becomes active, so course reminders roll forward.
+    /// Never prompts for permission. Skipped while no medications are loaded: data isn't saved
+    /// between launches yet, and rescheduling an empty list would delete reminders still pending
+    /// from the previous session.
+    func refreshRemindersIfAuthorized() async {
+        guard !medications.isEmpty else { return }
+        switch await scheduler.authorizationStatus() {
+        case .authorized, .provisional, .ephemeral:
+            await rescheduleNotifications()
+        default:
+            break
         }
     }
 }
