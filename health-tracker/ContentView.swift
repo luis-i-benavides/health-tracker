@@ -7,16 +7,13 @@
 
 import SwiftUI
 
-/// App shell using the chosen layout for each screen.
-/// Logging a dose happens from the Today timeline via `LogMedicationQuickView`.
+/// App shell. Doses, measurements and symptoms are all logged and browsed from the
+/// Today timeline, which can be filtered to one category.
 struct ContentView: View {
     var body: some View {
         TabView {
             Tab("Today", systemImage: "heart.text.clipboard") {
                 TodayTimelineView()
-            }
-            Tab("Symptoms", systemImage: "stethoscope") {
-                LogSymptomCompactView()
             }
             Tab("Reminders", systemImage: "bell") {
                 RemindersCardView()

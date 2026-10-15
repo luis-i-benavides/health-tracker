@@ -37,6 +37,29 @@ struct NotificationScheduler {
         await center.notificationSettings().authorizationStatus
     }
 
+    /// Sends a one-off notification after a short delay so the user can confirm reminders work.
+    func sendTestNotification(after seconds: TimeInterval = 5) async throws {
+        let content = UNMutableNotificationContent()
+        content.title = "Test reminder"
+        content.body = "Notifications are working. Dose and measurement reminders will look like this."
+        content.sound = .default
+        try await center.add(UNNotificationRequest(
+            identifier: "test.\(UUID().uuidString)",
+            content: content,
+            trigger: UNTimeIntervalNotificationTrigger(timeInterval: seconds, repeats: false)
+        ))
+    }
+
+    /// Identifiers and next fire dates of this app's pending reminders, soonest first.
+    func pendingReminders() async -> [(id: String, title: String, next: Date?)] {
+        await center.pendingNotificationRequests()
+            .map { request in
+                let next = (request.trigger as? UNCalendarNotificationTrigger)?.nextTriggerDate()
+                return (request.identifier, request.content.title, next)
+            }
+            .sorted { ($0.next ?? .distantFuture) < ($1.next ?? .distantFuture) }
+    }
+
     /// Replaces all medication and measurement notifications with the given schedule.
     func reschedule(medications: [Medication], measurementReminders: [MeasurementReminder]) async throws {
         let requests = Self.medicationRequests(for: medications)

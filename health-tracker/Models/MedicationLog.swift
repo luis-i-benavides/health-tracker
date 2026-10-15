@@ -48,6 +48,9 @@ struct MedicationLog: Identifiable, Hashable {
     var medicationID: Medication.ID
     /// The scheduled slot this log satisfies, if any (nil for unscheduled/extra doses).
     var scheduledTime: TimeOfDay?
+    /// The day of the scheduled slot. Stored separately from `takenAt` so a dose taken
+    /// late (e.g. yesterday's 11 PM dose at 12:30 AM) still counts for the right day.
+    var scheduledDay: Date
     var takenAt: Date
     /// The amount the user really took, which may differ from the prescribed dosage.
     var amountTaken: Double
@@ -55,10 +58,16 @@ struct MedicationLog: Identifiable, Hashable {
     var status: DoseStatus
     var note: String
 
+    /// The full scheduled date and time, if this dose was scheduled.
+    var scheduledDate: Date? {
+        scheduledTime?.date(on: scheduledDay)
+    }
+
     init(
         id: UUID = UUID(),
         medicationID: Medication.ID,
         scheduledTime: TimeOfDay?,
+        scheduledDay: Date? = nil,
         takenAt: Date = .now,
         amountTaken: Double,
         unit: String,
@@ -68,6 +77,7 @@ struct MedicationLog: Identifiable, Hashable {
         self.id = id
         self.medicationID = medicationID
         self.scheduledTime = scheduledTime
+        self.scheduledDay = Calendar.current.startOfDay(for: scheduledDay ?? takenAt)
         self.takenAt = takenAt
         self.amountTaken = amountTaken
         self.unit = unit

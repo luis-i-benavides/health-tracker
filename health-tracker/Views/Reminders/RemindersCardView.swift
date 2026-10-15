@@ -2,13 +2,16 @@
 //  RemindersCardView.swift
 //  health-tracker
 //
-//  Variant B — one card per measurement type with time chips, plus a medications card.
+//  One card per measurement type with time chips, plus a medications card.
 //
 
 import SwiftUI
 
 struct RemindersCardView: View {
     @Environment(HealthStore.self) private var store
+
+    /// Measurement being recorded on demand from a card.
+    @State private var measurementToRecord: MeasurementKind?
 
     var body: some View {
         @Bindable var store = store
@@ -37,6 +40,9 @@ struct RemindersCardView: View {
             .background(Color(.systemGroupedBackground))
             .navigationTitle("Reminders")
             .reschedulesReminders(in: store)
+            .sheet(item: $measurementToRecord) { kind in
+                LogMeasurementView(kind: kind)
+            }
         }
     }
 
@@ -57,6 +63,7 @@ struct RemindersCardView: View {
 
     private func measurementCard(_ reminder: Binding<MeasurementReminder>) -> some View {
         let kind = reminder.wrappedValue.kind
+        let isEnabled = reminder.wrappedValue.isEnabled
         return VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Image(systemName: kind.symbol)
@@ -64,10 +71,12 @@ struct RemindersCardView: View {
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 44)
                     .background(kind.color, in: .rect(cornerRadius: 12))
+                    .opacity(isEnabled ? 1 : 0.6)
                 Text(kind.label)
                     .font(.headline)
+                    .foregroundStyle(isEnabled ? .primary : .secondary)
                 Spacer()
-                Toggle(kind.label, isOn: reminder.isEnabled)
+                Toggle("\(kind.label) reminders", isOn: reminder.isEnabled)
                     .labelsHidden()
             }
 
@@ -93,9 +102,18 @@ struct RemindersCardView: View {
                 }
                 .scrollIndicators(.hidden)
             }
+
+            // Record a reading any time, whether or not reminders are on.
+            Button {
+                measurementToRecord = kind
+            } label: {
+                Label("Record Now", systemImage: "plus.circle")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.glass)
+            .tint(kind.color)
         }
         .cardStyle()
-        .opacity(reminder.wrappedValue.isEnabled ? 1 : 0.6)
     }
 }
 

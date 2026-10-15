@@ -40,7 +40,7 @@ enum SymptomType: String, CaseIterable, Identifiable {
     var symbol: String {
         switch self {
         case .headache: "brain.head.profile"
-        case .nausea: "stomach"
+        case .nausea: "waveform.path"
         case .dizziness: "tornado"
         case .fatigue: "battery.25percent"
         case .chestPain: "heart"

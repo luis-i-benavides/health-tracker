@@ -47,23 +47,38 @@ struct TimeOfDay: Hashable, Comparable, Identifiable {
     }
 }
 
+extension Date {
+    /// Default "taken at" when logging for `day`: now if `day` is today; otherwise the
+    /// scheduled time on that day, or the current clock time on that day if unscheduled.
+    static func defaultLogTime(on day: Date, scheduled: TimeOfDay?, calendar: Calendar = .current) -> Date {
+        let now = Date.now
+        if calendar.isDate(day, inSameDayAs: now) { return now }
+        let parts = calendar.dateComponents([.hour, .minute], from: now)
+        let time = scheduled ?? TimeOfDay(hour: parts.hour ?? 12, minute: parts.minute ?? 0)
+        return min(time.date(on: day, calendar: calendar), now)
+    }
+}
+
 struct Medication: Identifiable, Hashable {
     let id: UUID
     var name: String
     var dosage: Double
     var unit: String
     var times: [TimeOfDay]
+    /// When this medication was first added. Earlier days don't show its doses as missed.
+    var addedOn: Date
 
-    init(id: UUID = UUID(), name: String, dosage: Double, unit: String, times: [TimeOfDay]) {
+    init(id: UUID = UUID(), name: String, dosage: Double, unit: String, times: [TimeOfDay], addedOn: Date = .now) {
         self.id = id
         self.name = name
         self.dosage = dosage
         self.unit = unit
         self.times = times.sorted()
+        self.addedOn = addedOn
     }
 
-    /// e.g. "10 mg" or "2.5 ml".
+    /// e.g. "10 mg", "2.5 ml" or "0.075 mg". Allows up to 4 decimals so small doses are never rounded.
     var displayDosage: String {
-        "\(dosage.formatted(.number.precision(.fractionLength(0...2)))) \(unit)"
+        "\(dosage.formatted(.number.precision(.fractionLength(0...4)))) \(unit)"
     }
 }

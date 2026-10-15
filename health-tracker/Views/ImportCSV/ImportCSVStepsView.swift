@@ -2,7 +2,7 @@
 //  ImportCSVStepsView.swift
 //  health-tracker
 //
-//  Variant C — guided three-step flow: learn the format → choose a file → review & confirm.
+//  Guided three-step flow: learn the format → choose a file → review & confirm.
 //
 
 import SwiftUI

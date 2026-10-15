@@ -32,13 +32,35 @@ extension Binding where Value == TimeOfDay {
 struct NotificationPermissionBanner: View {
     @Environment(HealthStore.self) private var store
     @State private var status: UNAuthorizationStatus?
+    @State private var nextReminder: (title: String, date: Date)?
+    @State private var testSent = false
 
     var body: some View {
         Group {
             switch status {
             case .authorized, .provisional, .ephemeral:
-                Label("Notifications are on", systemImage: "bell.badge.fill")
-                    .foregroundStyle(.green)
+                VStack(alignment: .leading, spacing: 10) {
+                    Label("Notifications are on", systemImage: "bell.badge.fill")
+                        .foregroundStyle(.green)
+                    if let nextReminder {
+                        Text("Next: \(nextReminder.title) at \(nextReminder.date.formatted(date: .omitted, time: .shortened))")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("No reminders scheduled yet.")
+                            .foregroundStyle(.secondary)
+                    }
+                    Button(testSent ? "Test Sent — Arrives in 5 Seconds" : "Send Test Notification",
+                           systemImage: "paperplane") {
+                        Task {
+                            try? await NotificationScheduler().sendTestNotification()
+                            testSent = true
+                            try? await Task.sleep(for: .seconds(6))
+                            testSent = false
+                        }
+                    }
+                    .buttonStyle(.glass)
+                    .disabled(testSent)
+                }
             case .denied:
                 Label("Notifications are off. Turn them on in Settings › Health Tracker.", systemImage: "bell.slash.fill")
                     .foregroundStyle(.red)
@@ -52,8 +74,13 @@ struct NotificationPermissionBanner: View {
             }
         }
         .font(.subheadline)
-        .task {
-            status = await NotificationScheduler().authorizationStatus()
+        // Refresh after every reschedule so "Next:" reflects the current reminders.
+        .task(id: store.scheduleVersion) {
+            let scheduler = NotificationScheduler()
+            status = await scheduler.authorizationStatus()
+            nextReminder = await scheduler.pendingReminders()
+                .first { $0.next != nil }
+                .map { ($0.title, $0.next!) }
         }
     }
 }
@@ -91,35 +118,25 @@ struct SeverityBadge: View {
     }
 }
 
-/// Icon + label for a dose's logged status, or a pending/overdue state.
-struct DoseStatusLabel: View {
-    let slot: DoseSlot
+/// Centered green Save button pinned to the bottom of the logging dialogs.
+/// (The dialogs have no Cancel button: tap outside the sheet or swipe it down to dismiss.)
+struct DialogSaveButton: View {
+    let isEnabled: Bool
+    let action: () -> Void
 
     var body: some View {
-        if let log = slot.log {
-            Label(log.status.label, systemImage: log.status.symbol)
-                .foregroundStyle(log.status.color)
-        } else if slot.isOverdue() {
-            Label("Overdue", systemImage: "exclamationmark.circle.fill")
-                .foregroundStyle(.red)
-        } else {
-            Label("Upcoming", systemImage: "clock")
-                .foregroundStyle(.secondary)
+        Button(action: action) {
+            Text("Save")
+                .font(.headline)
+                .frame(maxWidth: 240)
+                .padding(.vertical, 6)
         }
-    }
-}
-
-/// The symptom dropdown, shared by every Log Symptom variant.
-struct SymptomPicker: View {
-    @Binding var selection: SymptomType
-
-    var body: some View {
-        Picker("Symptom", selection: $selection) {
-            ForEach(SymptomType.allCases) { type in
-                Label(type.label, systemImage: type.symbol).tag(type)
-            }
-        }
-        .pickerStyle(.menu)
+        .buttonStyle(.glassProminent)
+        .tint(.green)
+        .disabled(!isEnabled)
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal)
+        .padding(.bottom, 8)
     }
 }
 

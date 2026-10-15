@@ -7,21 +7,28 @@ import Foundation
 
 /// Sample content shared by all previews.
 enum SampleData {
+    /// Sample medications and reminders start a month ago so past days in previews have a schedule.
+    static let monthAgo = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
+
     static let lisinopril = Medication(
         name: "Lisinopril", dosage: 10, unit: "mg",
-        times: [TimeOfDay(hour: 8, minute: 0)]
+        times: [TimeOfDay(hour: 8, minute: 0)],
+        addedOn: monthAgo
     )
     static let metformin = Medication(
         name: "Metformin", dosage: 500, unit: "mg",
-        times: [TimeOfDay(hour: 8, minute: 0), TimeOfDay(hour: 20, minute: 0)]
+        times: [TimeOfDay(hour: 8, minute: 0), TimeOfDay(hour: 20, minute: 0)],
+        addedOn: monthAgo
     )
     static let atorvastatin = Medication(
         name: "Atorvastatin", dosage: 20, unit: "mg",
-        times: [TimeOfDay(hour: 21, minute: 30)]
+        times: [TimeOfDay(hour: 21, minute: 30)],
+        addedOn: monthAgo
     )
     static let vitaminD = Medication(
         name: "Vitamin D3", dosage: 1000, unit: "IU",
-        times: [TimeOfDay(hour: 12, minute: 0)]
+        times: [TimeOfDay(hour: 12, minute: 0)],
+        addedOn: monthAgo
     )
 
     static let medications = [lisinopril, metformin, atorvastatin, vitaminD]
@@ -42,7 +49,33 @@ enum SampleData {
                 amountTaken: 250, unit: "mg", status: .partial,
                 note: "Only had half a tablet left — refill needed."
             ),
+            // Yesterday: most doses taken, the evening Metformin late, Atorvastatin missed.
+            MedicationLog(
+                medicationID: lisinopril.id, scheduledTime: TimeOfDay(hour: 8, minute: 0),
+                takenAt: TimeOfDay(hour: 8, minute: 3).date(on: yesterday),
+                amountTaken: 10, unit: "mg", status: .taken
+            ),
+            MedicationLog(
+                medicationID: metformin.id, scheduledTime: TimeOfDay(hour: 8, minute: 0),
+                takenAt: TimeOfDay(hour: 8, minute: 3).date(on: yesterday),
+                amountTaken: 500, unit: "mg", status: .taken
+            ),
+            MedicationLog(
+                medicationID: vitaminD.id, scheduledTime: TimeOfDay(hour: 12, minute: 0),
+                takenAt: TimeOfDay(hour: 12, minute: 20).date(on: yesterday),
+                amountTaken: 1000, unit: "IU", status: .taken
+            ),
+            MedicationLog(
+                medicationID: metformin.id, scheduledTime: TimeOfDay(hour: 20, minute: 0),
+                takenAt: TimeOfDay(hour: 21, minute: 10).date(on: yesterday),
+                amountTaken: 500, unit: "mg", status: .taken,
+                note: "Forgot until after dinner."
+            ),
         ]
+    }
+
+    static var yesterday: Date {
+        Calendar.current.date(byAdding: .day, value: -1, to: .now) ?? .now
     }
 
     static var symptomLogs: [SymptomLog] {
@@ -58,6 +91,43 @@ enum SampleData {
                 date: TimeOfDay(hour: 7, minute: 45).date(on: today),
                 note: "When standing up quickly."
             ),
+            SymptomLog(
+                type: .nausea, severity: .mild,
+                date: TimeOfDay(hour: 9, minute: 0).date(on: yesterday),
+                note: "After morning Metformin on an empty stomach."
+            ),
+        ]
+    }
+
+    static var measurementLogs: [MeasurementLog] {
+        let today = Date.now
+        return [
+            MeasurementLog(
+                kind: .bloodPressure, values: [128, 84], unit: "mmHg",
+                scheduledTime: TimeOfDay(hour: 7, minute: 30),
+                takenAt: TimeOfDay(hour: 7, minute: 34).date(on: today),
+                note: "Left arm, seated."
+            ),
+            MeasurementLog(
+                kind: .bloodGlucose, values: [104], unit: "mg/dL",
+                scheduledTime: TimeOfDay(hour: 7, minute: 0),
+                takenAt: TimeOfDay(hour: 7, minute: 5).date(on: today)
+            ),
+            MeasurementLog(
+                kind: .oxygenSaturation, values: [95], unit: "%",
+                takenAt: TimeOfDay(hour: 9, minute: 15).date(on: today),
+                note: "After climbing stairs."
+            ),
+            MeasurementLog(
+                kind: .bloodPressure, values: [132, 86], unit: "mmHg",
+                scheduledTime: TimeOfDay(hour: 7, minute: 30),
+                takenAt: TimeOfDay(hour: 7, minute: 41).date(on: yesterday)
+            ),
+            MeasurementLog(
+                kind: .bloodGlucose, values: [112], unit: "mg/dL",
+                scheduledTime: TimeOfDay(hour: 7, minute: 0),
+                takenAt: TimeOfDay(hour: 7, minute: 2).date(on: yesterday)
+            ),
         ]
     }
 
@@ -65,17 +135,20 @@ enum SampleData {
         MeasurementReminder(
             kind: .bloodPressure,
             times: [TimeOfDay(hour: 7, minute: 30), TimeOfDay(hour: 19, minute: 30)],
-            isEnabled: true
+            isEnabled: true,
+            activeSince: monthAgo
         ),
         MeasurementReminder(
             kind: .bloodGlucose,
             times: [TimeOfDay(hour: 7, minute: 0)],
-            isEnabled: true
+            isEnabled: true,
+            activeSince: monthAgo
         ),
         MeasurementReminder(
             kind: .weight,
             times: [TimeOfDay(hour: 6, minute: 45)],
-            isEnabled: false
+            isEnabled: false,
+            activeSince: monthAgo
         ),
     ]
 
