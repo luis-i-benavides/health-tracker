@@ -190,7 +190,7 @@ struct MedicationTests {
         #expect(medication.form == .tablet)
         #expect(medication.quantity == 1)
         #expect(medication.route == .byMouth)
-        #expect(medication.displayDosage == "10 mg")
+        #expect(PrescriptionFormatter(locale: Locale(identifier: "en_US")).doseText(for: medication) == "1 tablet (10 mg)")
     }
 
     @Test func legacyInitTreatsFormUnitsAsQuantity() {
@@ -198,7 +198,7 @@ struct MedicationTests {
         #expect(medication.strength == nil)
         #expect(medication.form == .tablet)
         #expect(medication.quantity == 2)
-        #expect(medication.displayDosage == "2 tablets")
+        #expect(PrescriptionFormatter(locale: Locale(identifier: "en_US")).doseText(for: medication) == "2 tablets")
     }
 
     @Test func adoptingIdentityKeepsNewInstructions() {

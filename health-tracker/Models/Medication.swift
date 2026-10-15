@@ -128,9 +128,11 @@ struct Medication: Identifiable, Hashable {
     }
 
     /// Total drug per dose, when it can be computed from the strength.
-    /// Not computed for percentages, insulin-style "units" doses, or concentrations
-    /// measured in something other than mL.
-    var doseAmount: DoseAmount? {
+    var doseAmount: DoseAmount? { doseAmount(forQuantity: quantity) }
+
+    /// Drug amount in `quantity` units, e.g. ½ tablet of 25 mg = 12.5 mg. Not computed for
+    /// percentages, insulin-style "units" doses, or concentrations measured in something other than mL.
+    func doseAmount(forQuantity quantity: Double) -> DoseAmount? {
         guard let strength, strength.isAmountPerUnit, form != .unit else { return nil }
         if let perVolume = strength.perVolume {
             guard form == .milliliter, strength.perVolumeUnit == "mL", perVolume > 0 else { return nil }
@@ -149,7 +151,7 @@ struct Medication: Identifiable, Hashable {
         )
     }
 
-    // MARK: - Legacy bridge (CSV v1 and current screens). Screens move off these in Phase 3.
+    // MARK: - Legacy CSV format
 
     /// Builds a medication from the original `name,dosage,unit,times` CSV format: a daily
     /// medication taken by mouth. "500 mg" becomes the strength of one tablet; a unit that's
@@ -163,18 +165,5 @@ struct Medication: Identifiable, Hashable {
             self.init(id: id, name: name, strength: Strength(value: dosage, unit: unit),
                       schedule: .daily(times: times.sorted()), addedOn: addedOn)
         }
-    }
-
-    /// Amount per dose as a number: the drug amount when known, otherwise the unit count.
-    var dosage: Double { doseAmount?.value ?? quantity }
-
-    /// Unit for `dosage`: "mg" etc., or the dose form ("tablets").
-    var unit: String {
-        doseAmount?.unit ?? (quantity == 1 ? form.singular : form.plural)
-    }
-
-    /// e.g. "10 mg", "2.5 mL" or "0.075 mg". Allows up to 4 decimals so small doses are never rounded.
-    var displayDosage: String {
-        "\(dosage.formatted(.number.precision(.fractionLength(0...4)))) \(unit)"
     }
 }

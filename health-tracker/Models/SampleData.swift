@@ -40,35 +40,35 @@ enum SampleData {
                 medicationID: lisinopril.id,
                 scheduledTime: TimeOfDay(hour: 8, minute: 0),
                 takenAt: TimeOfDay(hour: 8, minute: 12).date(on: today),
-                amountTaken: 10, unit: "mg", status: .taken
+                quantityTaken: 1, status: .taken
             ),
             MedicationLog(
                 medicationID: metformin.id,
                 scheduledTime: TimeOfDay(hour: 8, minute: 0),
                 takenAt: TimeOfDay(hour: 8, minute: 15).date(on: today),
-                amountTaken: 250, unit: "mg", status: .partial,
+                quantityTaken: 0.5, status: .partial,
                 note: "Only had half a tablet left — refill needed."
             ),
             // Yesterday: most doses taken, the evening Metformin late, Atorvastatin missed.
             MedicationLog(
                 medicationID: lisinopril.id, scheduledTime: TimeOfDay(hour: 8, minute: 0),
                 takenAt: TimeOfDay(hour: 8, minute: 3).date(on: yesterday),
-                amountTaken: 10, unit: "mg", status: .taken
+                quantityTaken: 1, status: .taken
             ),
             MedicationLog(
                 medicationID: metformin.id, scheduledTime: TimeOfDay(hour: 8, minute: 0),
                 takenAt: TimeOfDay(hour: 8, minute: 3).date(on: yesterday),
-                amountTaken: 500, unit: "mg", status: .taken
+                quantityTaken: 1, status: .taken
             ),
             MedicationLog(
                 medicationID: vitaminD.id, scheduledTime: TimeOfDay(hour: 12, minute: 0),
                 takenAt: TimeOfDay(hour: 12, minute: 20).date(on: yesterday),
-                amountTaken: 1000, unit: "IU", status: .taken
+                quantityTaken: 1, status: .taken
             ),
             MedicationLog(
                 medicationID: metformin.id, scheduledTime: TimeOfDay(hour: 20, minute: 0),
                 takenAt: TimeOfDay(hour: 21, minute: 10).date(on: yesterday),
-                amountTaken: 500, unit: "mg", status: .taken,
+                quantityTaken: 1, status: .taken,
                 note: "Forgot until after dinner."
             ),
         ]

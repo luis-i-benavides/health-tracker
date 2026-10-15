@@ -13,6 +13,8 @@ struct DoseDetailView: View {
     let medication: Medication
     let log: MedicationLog
 
+    private let formatter = PrescriptionFormatter()
+
     /// Doses within this many minutes of the scheduled time count as on time.
     private static let onTimeWindowMinutes = 15
 
@@ -32,6 +34,17 @@ struct DoseDetailView: View {
                         }
                     }
                     .accessibilityElement(children: .combine)
+                    if log.confirmedOverLimit {
+                        Label("Logged over the as-needed limit", systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
+                    NavigationLink {
+                        MedicationDetailView(medication: medication)
+                    } label: {
+                        Text(formatter.instruction(for: medication))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section("Timing") {
@@ -51,10 +64,10 @@ struct DoseDetailView: View {
 
                 Section("Dose") {
                     LabeledContent("Amount taken") {
-                        Text("\(log.amountTaken.formatted(.number.precision(.fractionLength(0...4)))) \(log.unit)")
+                        Text(log.status == .skipped ? "None" : formatter.doseText(for: medication, quantity: log.quantityTaken))
                     }
-                    LabeledContent("Prescribed", value: medication.displayDosage)
-                    if log.status != .skipped, log.amountTaken != medication.dosage {
+                    LabeledContent("Prescribed", value: formatter.doseText(for: medication))
+                    if log.status != .skipped, log.quantityTaken != medication.quantity {
                         LabeledContent("Difference") {
                             Text(differenceDescription)
                                 .foregroundStyle(.orange)
@@ -94,16 +107,16 @@ struct DoseDetailView: View {
         return minutes > 0 ? ("\(duration) late", .orange) : ("\(duration) early", .orange)
     }
 
-    /// e.g. "250 mg less than prescribed".
+    /// e.g. "½ tablet (250 mg) less than prescribed".
     private var differenceDescription: String {
-        let diff = log.amountTaken - medication.dosage
-        let amount = abs(diff).formatted(.number.precision(.fractionLength(0...4)))
-        return "\(amount) \(log.unit) \(diff < 0 ? "less" : "more") than prescribed"
+        let diff = log.quantityTaken - medication.quantity
+        return "\(formatter.doseText(for: medication, quantity: abs(diff))) \(diff < 0 ? "less" : "more") than prescribed"
     }
 }
 
 #Preview("Dose Details – Partial with Note") {
     DoseDetailView(medication: SampleData.metformin, log: SampleData.medicationLogs[1])
+        .environment(HealthStore.preview)
 }
 
 #Preview("Dose Details – Extra Dose") {
@@ -111,7 +124,8 @@ struct DoseDetailView: View {
         medication: SampleData.vitaminD,
         log: MedicationLog(
             medicationID: SampleData.vitaminD.id, scheduledTime: nil,
-            amountTaken: 1000, unit: "IU", status: .extra
+            quantityTaken: 1, status: .extra
         )
     )
+    .environment(HealthStore.preview)
 }

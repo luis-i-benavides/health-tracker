@@ -8,6 +8,11 @@
 import SwiftUI
 import UserNotifications
 
+extension String {
+    /// First letter uppercased, for phrases shown on their own ("twice daily…" → "Twice daily…").
+    var sentenceCased: String { prefix(1).uppercased() + dropFirst() }
+}
+
 extension TimeOfDay {
     /// Locale-aware short time, e.g. "8:00 AM" or "08:00".
     var displayText: String {
@@ -145,16 +150,16 @@ struct CSVFormatHelp: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("""
-            name,dosage,unit,times
-            Lisinopril,10,mg,08:00
-            Metformin,500,mg,08:00;20:00
+            name,strength,form,quantity,frequency,food,duration_days
+            Metformin,500 mg,tablet,1,twice daily,with food,
+            Amoxicillin,500 mg,capsule,1,TID,with food,10
             """)
             .font(.caption.monospaced())
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
             .background(.fill.tertiary, in: .rect(cornerRadius: 8))
 
-            Text("One row per medication. Separate multiple times with “;” and use 24-hour HH:mm.")
+            Text("One row per medication; columns can be in any order. Required: name, strength, frequency. Optional: generic, form, quantity, route, times (24-hour HH:mm, separated by “;”), food, duration_days, start, purpose, and for as-needed medications max_per_24h and min_hours_apart. The older name,dosage,unit,times format also works.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         }

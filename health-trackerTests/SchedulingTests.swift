@@ -30,7 +30,7 @@ private enum Fixture {
 
     static func log(_ medication: Medication, at takenAt: Date, status: DoseStatus = .taken) -> MedicationLog {
         MedicationLog(medicationID: medication.id, scheduledTime: nil, takenAt: takenAt,
-                      amountTaken: 10, unit: "mg", status: status)
+                      quantityTaken: 1, status: status)
     }
 }
 

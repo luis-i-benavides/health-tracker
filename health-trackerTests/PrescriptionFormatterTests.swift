@@ -178,6 +178,36 @@ struct PrescriptionFormatterTests {
         #expect(formatter.subtitle(for: albuterol, on: .now) == "2 puffs · as needed")
     }
 
+    // MARK: - Dose text and as-needed messages
+
+    @Test func doseTextForOtherQuantities() {
+        let metformin = Medication(name: "Metformin", strength: Strength(value: 500, unit: "mg"),
+                                   schedule: .daily(times: [t(8)]))
+        #expect(plain(formatter.doseText(for: metformin)) == "1 tablet (500 mg)")
+        #expect(plain(formatter.doseText(for: metformin, quantity: 0.5)) == "½ tablet (250 mg)")
+        #expect(plain(formatter.doseText(for: metformin, quantity: 2)) == "2 tablets (1,000 mg)")
+    }
+
+    @Test func asNeededStatusAndWarningText() throws {
+        let morning = try #require(calendar.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 9)))
+        let last = try #require(calendar.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 8)))
+        let next = try #require(calendar.date(from: DateComponents(year: 2026, month: 10, day: 12, hour: 12)))
+        let status = AsNeededStatus(dosesInLast24h: 2, maxDosesPer24h: 4, minHoursApart: 4,
+                                    lastDose: last, nextAllowed: next)
+        #expect(formatter.statusText(status) == "2 of 4 doses in the last 24 hours")
+        #expect(plain(formatter.nextDoseText(status, now: morning)) == "Next dose allowed after 12:00 PM")
+
+        #expect(formatter.warningText(.overDailyMax(count: 5, max: 4), now: morning) ==
+            "This would be 5 doses in 24 hours. The maximum is 4.")
+        #expect(plain(formatter.warningText(.tooSoon(lastDose: last, nextAllowed: next), now: morning)) ==
+            "The last dose was at 8:00 AM. The next one shouldn't be taken before 12:00 PM.")
+    }
+
+    @Test func nextDoseTextWhenAllowedNow() {
+        let status = AsNeededStatus(dosesInLast24h: 0, maxDosesPer24h: 4, minHoursApart: 4, lastDose: nil, nextAllowed: nil)
+        #expect(formatter.nextDoseText(status) == "A dose is allowed now")
+    }
+
     // MARK: - Pieces
 
     @Test(arguments: [

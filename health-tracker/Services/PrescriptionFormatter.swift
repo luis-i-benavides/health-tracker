@@ -33,13 +33,7 @@ struct PrescriptionFormatter {
 
     /// The instruction sentence ("sig").
     func instruction(for medication: Medication) -> String {
-        var parts = [medication.route.verb]
-
-        var dose = quantityText(medication.quantity, form: medication.form)
-        if let amount = medication.doseAmount {
-            dose += " (\(amountText(amount)))"
-        }
-        parts.append(dose)
+        var parts = [medication.route.verb, doseText(for: medication)]
 
         if let phrase = medication.route.phrase {
             parts.append(phrase)
@@ -68,12 +62,7 @@ struct PrescriptionFormatter {
     /// Short instruction for a reminder notification: what to take and how, without the
     /// schedule (the notification itself is the schedule), e.g. "Take 1 capsule (500 mg) by mouth with food."
     func reminderBody(for medication: Medication) -> String {
-        var parts = [medication.route.verb]
-        var dose = quantityText(medication.quantity, form: medication.form)
-        if let amount = medication.doseAmount {
-            dose += " (\(amountText(amount)))"
-        }
-        parts.append(dose)
+        var parts = [medication.route.verb, doseText(for: medication)]
         if let phrase = medication.route.phrase {
             parts.append(phrase)
         }
@@ -118,7 +107,50 @@ struct PrescriptionFormatter {
         return parts.joined(separator: " · ")
     }
 
+    // MARK: - As-needed limits
+
+    /// "2 of 4 doses in the last 24 hours".
+    func statusText(_ status: AsNeededStatus) -> String {
+        "\(status.dosesInLast24h) of \(count(status.maxDosesPer24h, "dose", "doses")) in the last 24 hours"
+    }
+
+    /// "Next dose allowed after 3:40 PM" (or tomorrow's date when not today), or "A dose is allowed now".
+    func nextDoseText(_ status: AsNeededStatus, now: Date = .now) -> String {
+        guard let next = status.nextAllowed else { return "A dose is allowed now" }
+        return "Next dose allowed after \(momentText(next, relativeTo: now))"
+    }
+
+    /// Explanation shown before confirming a dose past a limit.
+    func warningText(_ warning: AsNeededWarning, now: Date = .now) -> String {
+        switch warning {
+        case .overDailyMax(let count, let max):
+            "This would be \(count) doses in 24 hours. The maximum is \(max)."
+        case .tooSoon(let lastDose, let nextAllowed):
+            "The last dose was at \(momentText(lastDose, relativeTo: now)). "
+                + "The next one shouldn't be taken before \(momentText(nextAllowed, relativeTo: now))."
+        }
+    }
+
+    /// Time only for the same day as `now`, otherwise date and time.
+    private func momentText(_ date: Date, relativeTo now: Date) -> String {
+        let style: Date.FormatStyle = calendar.isDate(date, inSameDayAs: now)
+            ? Date.FormatStyle(date: .omitted, time: .shortened)
+            : Date.FormatStyle(date: .abbreviated, time: .shortened)
+        return date.formatted(style.locale(locale))
+    }
+
     // MARK: - Pieces
+
+    /// Units plus drug amount when known: "1 tablet (500 mg)", "½ tablet (12.5 mg)", "2 puffs (180 mcg)".
+    /// Defaults to the prescribed quantity.
+    func doseText(for medication: Medication, quantity: Double? = nil) -> String {
+        let quantity = quantity ?? medication.quantity
+        var text = quantityText(quantity, form: medication.form)
+        if let amount = medication.doseAmount(forQuantity: quantity) {
+            text += " (\(amountText(amount)))"
+        }
+        return text
+    }
 
     /// "1 tablet", "½ tablet", "1½ tablets", "2 puffs", "7.5 mL".
     func quantityText(_ quantity: Double, form: DoseForm) -> String {

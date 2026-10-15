@@ -13,6 +13,8 @@ struct RemindersCardView: View {
     /// Measurement being recorded on demand from a card.
     @State private var measurementToRecord: MeasurementKind?
 
+    private let formatter = PrescriptionFormatter()
+
     var body: some View {
         @Bindable var store = store
 
@@ -53,12 +55,62 @@ struct RemindersCardView: View {
                 Label("Medication doses", systemImage: "pills.fill")
                     .font(.headline)
             }
-            let count = store.medications.reduce(0) { $0 + $1.times.count }
-            Text("\(count) daily reminders across \(store.medications.count) medications")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
+            let scheduled = store.medications.filter { !$0.schedule.isAsNeeded }
+            let asNeeded = store.medications.filter(\.schedule.isAsNeeded)
+
+            if store.medications.isEmpty {
+                Text("Import your medication list to get dose reminders.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            if !scheduled.isEmpty {
+                medicationGroup("Scheduled", scheduled) { formatter.scheduleText($0.schedule).sentenceCased }
+            }
+            if !asNeeded.isEmpty {
+                // No reminders: these are taken only when needed, within their limits.
+                medicationGroup("As needed · no reminders", asNeeded) { formatter.warnings(for: $0).first ?? "" }
+            }
+            if !store.coursesWithRemindersEndingEarly.isEmpty {
+                Label("Some course reminders are scheduled only a few days ahead (iOS limits how many can be queued). Opening the app schedules more.",
+                      systemImage: "bell.badge")
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
         }
         .cardStyle()
+    }
+
+    /// A titled list of medications, each linking to its details.
+    private func medicationGroup(
+        _ title: String, _ medications: [Medication], detail: @escaping (Medication) -> String
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+            ForEach(medications) { medication in
+                NavigationLink {
+                    MedicationDetailView(medication: medication)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(medication.name)
+                            Text(detail(medication))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                    }
+                    .contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
+        }
     }
 
     private func measurementCard(_ reminder: Binding<MeasurementReminder>) -> some View {

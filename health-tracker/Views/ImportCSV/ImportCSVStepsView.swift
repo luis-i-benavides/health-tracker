@@ -29,6 +29,8 @@ struct ImportCSVStepsView: View {
     @State private var readError: String?
     @State private var isDone = false
 
+    private let formatter = PrescriptionFormatter()
+
     init(result: CSVParseResult? = nil) {
         _result = State(initialValue: result)
         _step = State(initialValue: result == nil ? .format : .review)
@@ -141,17 +143,27 @@ struct ImportCSVStepsView: View {
                 List {
                     Section {
                         LabeledContent("Medications found", value: "\(result.medications.count)")
-                        LabeledContent("Daily reminders", value: "\(result.medications.reduce(0) { $0 + $1.times.count })")
+                        LabeledContent("Scheduled doses per day", value: "\(result.medications.reduce(0) { $0 + $1.times.count })")
                         if !result.errors.isEmpty {
                             LabeledContent("Rows skipped", value: "\(result.errors.count)")
                                 .foregroundStyle(.orange)
                         }
                     }
                     Section("Medications") {
+                        // Read back exactly what the app understood before importing.
                         ForEach(result.medications) { med in
-                            LabeledContent(med.name) {
-                                Text("\(med.displayDosage) · \(med.times.map(\.formatted24h).joined(separator: ", "))")
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(formatter.title(for: med))
+                                    .font(.headline)
+                                Text(formatter.instruction(for: med))
+                                    .font(.subheadline)
+                                ForEach(formatter.warnings(for: med), id: \.self) { warning in
+                                    Text(warning)
+                                        .font(.caption)
+                                        .foregroundStyle(.orange)
+                                }
                             }
+                            .padding(.vertical, 2)
                         }
                     }
                     if !result.errors.isEmpty {

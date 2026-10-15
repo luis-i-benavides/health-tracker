@@ -92,6 +92,8 @@ struct TodayTimelineView: View {
     /// Remembered across launches.
     @AppStorage("timelineFilter") private var filter: TimelineFilter = .all
 
+    private let formatter = PrescriptionFormatter()
+
     init(day: Date = .now) {
         _selectedDay = State(initialValue: Calendar.current.startOfDay(for: day))
     }
@@ -204,7 +206,7 @@ struct TodayTimelineView: View {
                         Text("Import your medications first")
                     }
                     ForEach(store.medications) { med in
-                        Button("\(med.name) (\(med.displayDosage))", systemImage: "pills") {
+                        Button("\(med.name) (\(formatter.doseText(for: med)))", systemImage: "pills") {
                             extraDoseMedication = med
                         }
                     }
@@ -294,7 +296,7 @@ struct TodayTimelineView: View {
                     timelineRow(
                         date: entry.date, icon: log.status.symbol, color: log.status.color,
                         title: slot.medication.name,
-                        subtitle: doseSubtitle(log),
+                        subtitle: doseSubtitle(log, medication: slot.medication),
                         isPast: isPast
                     ) { detailChevron }
                 }
@@ -306,7 +308,7 @@ struct TodayTimelineView: View {
                     icon: "pills.fill",
                     color: slot.isOverdue(now: now) ? .red : .accentColor,
                     title: slot.medication.name,
-                    subtitle: "\(slot.medication.displayDosage) \(pendingLabel(for: slot.date))",
+                    subtitle: "\(formatter.subtitle(for: slot.medication, on: selectedDay)) · \(pendingLabel(for: slot.date))",
                     isPast: isPast
                 ) {
                     Button("Log") { doseToLog = slot }
@@ -319,7 +321,7 @@ struct TodayTimelineView: View {
                 timelineRow(
                     date: entry.date, icon: log.status.symbol, color: log.status.color,
                     title: medication.name,
-                    subtitle: doseSubtitle(log),
+                    subtitle: doseSubtitle(log, medication: medication),
                     isPast: isPast
                 ) { detailChevron }
             }
@@ -370,12 +372,13 @@ struct TodayTimelineView: View {
             .padding(.top, 6)
     }
 
-    /// e.g. "Partial · 250 mg · has note".
-    private func doseSubtitle(_ log: MedicationLog) -> String {
+    /// e.g. "Partial · ½ tablet (250 mg) · has note".
+    private func doseSubtitle(_ log: MedicationLog, medication: Medication) -> String {
         var parts = [log.status.label]
         if log.status != .skipped {
-            parts.append("\(log.amountTaken.formatted(.number.precision(.fractionLength(0...4)))) \(log.unit)")
+            parts.append(formatter.doseText(for: medication, quantity: log.quantityTaken))
         }
+        if log.confirmedOverLimit { parts.append("over limit") }
         if !log.note.isEmpty { parts.append("has note") }
         return parts.joined(separator: " · ")
     }

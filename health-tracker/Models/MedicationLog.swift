@@ -52,9 +52,9 @@ struct MedicationLog: Identifiable, Hashable {
     /// late (e.g. yesterday's 11 PM dose at 12:30 AM) still counts for the right day.
     var scheduledDay: Date
     var takenAt: Date
-    /// The amount the user really took, which may differ from the prescribed dosage.
-    var amountTaken: Double
-    var unit: String
+    /// Units actually taken (tablets, puffs, mL…), which may differ from the prescribed quantity.
+    /// The drug amount is derived from the medication's strength.
+    var quantityTaken: Double
     var status: DoseStatus
     var note: String
     /// The user confirmed logging this dose despite an as-needed limit warning.
@@ -71,8 +71,7 @@ struct MedicationLog: Identifiable, Hashable {
         scheduledTime: TimeOfDay?,
         scheduledDay: Date? = nil,
         takenAt: Date = .now,
-        amountTaken: Double,
-        unit: String,
+        quantityTaken: Double,
         status: DoseStatus,
         note: String = "",
         confirmedOverLimit: Bool = false
@@ -82,8 +81,7 @@ struct MedicationLog: Identifiable, Hashable {
         self.scheduledTime = scheduledTime
         self.scheduledDay = Calendar.current.startOfDay(for: scheduledDay ?? takenAt)
         self.takenAt = takenAt
-        self.amountTaken = amountTaken
-        self.unit = unit
+        self.quantityTaken = quantityTaken
         self.status = status
         self.note = note
         self.confirmedOverLimit = confirmedOverLimit
