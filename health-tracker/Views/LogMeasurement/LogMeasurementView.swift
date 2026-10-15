@@ -20,6 +20,8 @@ struct LogMeasurementView: View {
     /// One entry per `kind.fields`; `nil` until the user types a number.
     @State private var values: [Double?]
     @State private var takenAt: Date
+    /// Whether the user changed the time; until then a reading for today is logged at Save time.
+    @State private var takenAtEdited = false
     @State private var note = ""
 
     init(kind: MeasurementKind, scheduledTime: TimeOfDay? = nil, day: Date = .now) {
@@ -100,7 +102,7 @@ struct LogMeasurementView: View {
                 }
 
                 Section {
-                    DatePicker("Taken at", selection: $takenAt, in: ...Date.now)
+                    DatePicker("Taken at", selection: $takenAt.onSet { takenAtEdited = true }, in: ...Date.now)
                 }
 
                 Section("Notes") {
@@ -139,7 +141,7 @@ struct LogMeasurementView: View {
             unit: fields.first?.unit ?? "",
             scheduledTime: scheduledTime,
             scheduledDay: day,
-            takenAt: takenAt,
+            takenAt: .logTime(chosen: takenAt, edited: takenAtEdited, day: day),
             note: note
         ))
         dismiss()

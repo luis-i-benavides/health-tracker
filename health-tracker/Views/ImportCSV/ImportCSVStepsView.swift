@@ -91,7 +91,7 @@ struct ImportCSVStepsView: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Prepare your file")
                 .font(.title2.bold())
-            Text("Export from a spreadsheet as CSV with these four columns:")
+            Text("Export your medication list from a spreadsheet as CSV, with a header row like this:")
                 .foregroundStyle(.secondary)
             CSVFormatHelp()
             Spacer()

@@ -284,3 +284,24 @@ struct ReminderPlannerTests {
         #expect(formatter.reminderBody(for: amoxicillin) == "Take 1 capsule (500 mg) by mouth with food.")
     }
 }
+
+// MARK: - Log time
+
+@MainActor
+struct LogTimeTests {
+    @Test func untouchedTimeForTodayIsTheMomentOfSaving() {
+        let openedAt = Date.now.addingTimeInterval(-120)   // sheet opened 2 minutes ago
+        let logged = Date.logTime(chosen: openedAt, edited: false, day: .now)
+        #expect(logged > openedAt.addingTimeInterval(100))
+    }
+
+    @Test func editedTimeIsKept() {
+        let chosen = Date.now.addingTimeInterval(-3600)
+        #expect(Date.logTime(chosen: chosen, edited: true, day: .now) == chosen)
+    }
+
+    @Test func pastDaysKeepTheirDefaultTime() {
+        let yesterday = Date.now.addingTimeInterval(-86_400)
+        #expect(Date.logTime(chosen: yesterday, edited: false, day: yesterday) == yesterday)
+    }
+}

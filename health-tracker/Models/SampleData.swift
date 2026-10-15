@@ -10,28 +10,48 @@ enum SampleData {
     /// Sample medications and reminders start a month ago so past days in previews have a schedule.
     static let monthAgo = Calendar.current.date(byAdding: .day, value: -30, to: .now) ?? .now
 
+    private static func t(_ hour: Int, _ minute: Int = 0) -> TimeOfDay { TimeOfDay(hour: hour, minute: minute) }
+
     static let lisinopril = Medication(
-        name: "Lisinopril", dosage: 10, unit: "mg",
-        times: [TimeOfDay(hour: 8, minute: 0)],
-        addedOn: monthAgo
+        name: "Lisinopril", strength: Strength(value: 10, unit: "mg"),
+        schedule: .daily(times: [t(8)]), purpose: "blood pressure", addedOn: monthAgo
     )
     static let metformin = Medication(
-        name: "Metformin", dosage: 500, unit: "mg",
-        times: [TimeOfDay(hour: 8, minute: 0), TimeOfDay(hour: 20, minute: 0)],
-        addedOn: monthAgo
+        name: "Metformin", strength: Strength(value: 500, unit: "mg"),
+        schedule: .daily(times: [t(8), t(20)]), foodRules: [.withFood, .avoidAlcohol],
+        purpose: "diabetes", addedOn: monthAgo
     )
     static let atorvastatin = Medication(
-        name: "Atorvastatin", dosage: 20, unit: "mg",
-        times: [TimeOfDay(hour: 21, minute: 30)],
-        addedOn: monthAgo
+        name: "Atorvastatin", strength: Strength(value: 20, unit: "mg"),
+        schedule: .atBedtime(t(21, 30)), foodRules: [.avoidGrapefruit],
+        purpose: "cholesterol", addedOn: monthAgo
     )
     static let vitaminD = Medication(
-        name: "Vitamin D3", dosage: 1000, unit: "IU",
-        times: [TimeOfDay(hour: 12, minute: 0)],
-        addedOn: monthAgo
+        name: "Vitamin D3", strength: Strength(value: 1000, unit: "IU"),
+        schedule: .daily(times: [t(12)]), foodRules: [.withFood], addedOn: monthAgo
+    )
+    /// A 10-day antibiotic course that started 2 days ago (so today is day 3).
+    static let amoxicillin = Medication(
+        name: "Amoxicillin", strength: Strength(value: 500, unit: "mg"), form: .capsule,
+        schedule: .daily(times: [t(8), t(14), t(20)]), foodRules: [.withFood],
+        course: Course(startDate: daysAgo(2), days: 10), purpose: "infection", addedOn: daysAgo(2)
+    )
+    /// As needed, at most 3 doses (6 puffs) in 24 hours.
+    static let albuterol = Medication(
+        name: "Albuterol HFA", strength: Strength(value: 90, unit: "mcg"), form: .puff, quantity: 2,
+        route: .inhaled, schedule: .asNeeded(minHoursApart: 4, maxDosesPer24h: 3),
+        purpose: "wheezing", addedOn: monthAgo
+    )
+    static let latanoprost = Medication(
+        name: "Latanoprost", strength: Strength(value: 0.005, unit: "%"), form: .drop,
+        route: .eye, schedule: .atBedtime(t(22)), purpose: "glaucoma", addedOn: monthAgo
     )
 
-    static let medications = [lisinopril, metformin, atorvastatin, vitaminD]
+    static let medications = [lisinopril, metformin, atorvastatin, vitaminD, amoxicillin, albuterol, latanoprost]
+
+    static func daysAgo(_ days: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: -days, to: .now) ?? .now
+    }
 
     static var medicationLogs: [MedicationLog] {
         let today = Date.now
@@ -70,6 +90,19 @@ enum SampleData {
                 takenAt: TimeOfDay(hour: 21, minute: 10).date(on: yesterday),
                 quantityTaken: 1, status: .taken,
                 note: "Forgot until after dinner."
+            ),
+            MedicationLog(
+                medicationID: albuterol.id, scheduledTime: nil,
+                takenAt: .now.addingTimeInterval(-5 * 3600), quantityTaken: 2, status: .extra,
+                note: "Wheezy after climbing stairs."
+            ),
+            MedicationLog(
+                medicationID: albuterol.id, scheduledTime: nil,
+                takenAt: .now.addingTimeInterval(-1 * 3600), quantityTaken: 2, status: .extra
+            ),
+            MedicationLog(
+                medicationID: amoxicillin.id, scheduledTime: TimeOfDay(hour: 8, minute: 0),
+                takenAt: TimeOfDay(hour: 8, minute: 5).date(on: today), quantityTaken: 1, status: .taken
             ),
         ]
     }
@@ -152,12 +185,14 @@ enum SampleData {
         ),
     ]
 
+    /// Prescription-format CSV for the import preview: four valid rows and two with errors.
     static let csv = """
-    name,dosage,unit,times
-    Lisinopril,10,mg,08:00
-    Metformin,500,mg,08:00;20:00
-    "Vitamin D3, chewable",1000,IU,12:00
-    Atorvastatin,twenty,mg,21:30
-    Aspirin,81,mg,25:00
+    name,strength,form,quantity,route,frequency,food,max_per_24h,duration_days,purpose
+    Metformin,500 mg,tablet,1,by mouth,twice daily,with food;avoid alcohol,,,diabetes
+    Amoxicillin,500 mg,capsule,1,by mouth,TID,with food,,10,infection
+    Albuterol HFA,90 mcg,puff,2,inhaled,as needed,,3,,wheezing
+    Latanoprost,0.005%,drop,1,eye,at bedtime,,,,glaucoma
+    Aspirin,81,tablet,1,by mouth,once daily,,,,
+    Ibuprofen,200 mg,tablet,1,by mouth,as needed,,,,pain
     """
 }

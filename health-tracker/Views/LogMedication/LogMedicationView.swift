@@ -23,6 +23,8 @@ struct LogMedicationView: View {
     @State private var status: DoseStatus
     @State private var quantity: Double
     @State private var takenAt: Date
+    /// Whether the user changed the time; until then a dose for today is logged at Save time.
+    @State private var takenAtEdited = false
     @State private var note = ""
     /// As-needed limit warnings awaiting the user's confirmation.
     @State private var pendingWarnings: [AsNeededWarning] = []
@@ -43,6 +45,10 @@ struct LogMedicationView: View {
         medicationID.flatMap(store.medication(for:))
     }
 
+    private var effectiveTakenAt: Date {
+        .logTime(chosen: takenAt, edited: takenAtEdited, day: day)
+    }
+
     private var canSave: Bool {
         medication != nil && (status == .skipped || quantity > 0)
     }
@@ -57,7 +63,7 @@ struct LogMedicationView: View {
                 takenSection
 
                 Section {
-                    DatePicker("Taken at", selection: $takenAt, in: ...Date.now)
+                    DatePicker("Taken at", selection: $takenAt.onSet { takenAtEdited = true }, in: ...Date.now)
                 }
 
                 Section("Notes") {
@@ -147,7 +153,7 @@ struct LogMedicationView: View {
 
     private func asNeededSection(for medication: Medication) -> some View {
         Section("As needed") {
-            if let limits = store.asNeededStatus(for: medication, at: takenAt) {
+            if let limits = store.asNeededStatus(for: medication, at: effectiveTakenAt) {
                 let isAtMax = limits.remainingDoses == 0
                 Label(formatter.statusText(limits), systemImage: isAtMax ? "exclamationmark.triangle.fill" : "clock")
                     .foregroundStyle(isAtMax ? .orange : .primary)
@@ -186,7 +192,7 @@ struct LogMedicationView: View {
     /// Saves, or first asks for confirmation when an as-needed limit would be exceeded.
     private func attemptSave() {
         guard let medication else { return }
-        let warnings = status == .skipped ? [] : store.asNeededWarnings(forDoseOf: medication, at: takenAt)
+        let warnings = status == .skipped ? [] : store.asNeededWarnings(forDoseOf: medication, at: effectiveTakenAt)
         if warnings.isEmpty {
             save(confirmedOverLimit: false)
         } else {
@@ -200,7 +206,7 @@ struct LogMedicationView: View {
             medicationID: medication.id,
             scheduledTime: scheduledTime,
             scheduledDay: day,
-            takenAt: takenAt,
+            takenAt: effectiveTakenAt,
             quantityTaken: status == .skipped ? 0 : quantity,
             status: status,
             note: note,
@@ -217,5 +223,10 @@ struct LogMedicationView: View {
 
 #Preview("Log Medication – Extra Dose") {
     LogMedicationView(medication: SampleData.vitaminD)
+        .environment(HealthStore.preview)
+}
+
+#Preview("Log Medication – As Needed") {
+    LogMedicationView(medication: SampleData.albuterol)
         .environment(HealthStore.preview)
 }

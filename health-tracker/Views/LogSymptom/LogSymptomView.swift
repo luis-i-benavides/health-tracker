@@ -19,6 +19,8 @@ struct LogSymptomView: View {
     /// 1–10 intensity, mapped to mild / moderate / severe.
     @State private var score: Double = 5
     @State private var date: Date
+    /// Whether the user changed the time; until then a symptom for today is logged at Save time.
+    @State private var dateEdited = false
     @State private var note = ""
 
     init(type: SymptomType = .headache, day: Date = .now) {
@@ -74,7 +76,7 @@ struct LogSymptomView: View {
                 }
 
                 Section {
-                    DatePicker("When", selection: $date, in: ...Date.now)
+                    DatePicker("When", selection: $date.onSet { dateEdited = true }, in: ...Date.now)
                 }
 
                 Section("Notes") {
@@ -97,7 +99,7 @@ struct LogSymptomView: View {
             type: type,
             customName: customName.trimmingCharacters(in: .whitespaces),
             severity: severity,
-            date: date,
+            date: .logTime(chosen: date, edited: dateEdited, day: day),
             note: note
         ))
         dismiss()

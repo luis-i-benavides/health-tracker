@@ -1,10 +1,13 @@
-name,dosage,unit,times
-Lisinopril,10,mg,08:00
-Metformin,500,mg,08:00;20:00
-Atorvastatin,20,mg,21:30
-"Vitamin D3, chewable",1000,IU,12:00
-Levothyroxine,0.075,mg,06:30
-Amoxicillin,250,mg,07:00;15:00;23:00
-Insulin glargine,12,units,22:00
-Omeprazole,20,mg,07:30
-Notification Test,1,tablet,01:37;01:40
+name,generic,strength,form,quantity,route,frequency,times,food,max_per_24h,min_hours_apart,duration_days,start,purpose
+Lisinopril,,10 mg,tablet,1,by mouth,once daily,,,,,,,blood pressure
+Glucophage,metformin,500 mg,tablet,1,by mouth,BID,,with food;avoid alcohol,,,,,diabetes
+Atorvastatin,,20 mg,tablet,1,by mouth,at bedtime,21:30,avoid grapefruit,,,,,cholesterol
+"Vitamin D3, chewable",,1000 IU,tablet,1,by mouth,daily,12:00,with food,,,,,
+Levothyroxine,,0.075 mg,tablet,1,by mouth,once daily,06:30,empty stomach;full glass of water,,,,,thyroid
+Amoxicillin suspension,amoxicillin,250 mg/5 mL,mL,10,by mouth,q8h,,,,,7,,infection
+Albuterol HFA,,90 mcg,puff,2,inhaled,as needed,,,4,4,,,wheezing
+Latanoprost,,0.005%,drop,1,eye,QHS,,,,,,,glaucoma
+Insulin glargine,,100 units/mL,unit,12,subcutaneous,at bedtime,22:00,,,,,,diabetes
+Alendronate,,70 mg,tablet,1,by mouth,Sun,07:00,empty stomach;full glass of water,,,,,bone strength
+Metoprolol,,25 mg,tablet,1/2,by mouth,twice daily,,,,,,,heart rate
+Notification Test,,500 mg,capsule,1,by mouth,twice daily,19:49;19:52,with food,,,2,,testing reminders

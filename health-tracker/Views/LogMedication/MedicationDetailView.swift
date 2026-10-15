@@ -112,3 +112,17 @@ struct MedicationDetailView: View {
     }
     .environment(HealthStore.preview)
 }
+
+#Preview("Medication – Course") {
+    NavigationStack {
+        MedicationDetailView(medication: SampleData.amoxicillin)
+    }
+    .environment(HealthStore.preview)
+}
+
+#Preview("Medication – As Needed") {
+    NavigationStack {
+        MedicationDetailView(medication: SampleData.albuterol)
+    }
+    .environment(HealthStore.preview)
+}

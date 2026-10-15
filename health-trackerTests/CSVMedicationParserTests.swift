@@ -354,14 +354,35 @@ struct CSVLegacyFormatTests {
         #expect(result.errors.isEmpty)
     }
 
-    /// The sample file used in the simulator should keep importing cleanly.
-    @Test func testDataFileImports() throws {
+    private func testData(_ name: String) throws -> CSVParseResult {
         let url = URL(filePath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent()
-            .appending(path: "TestData/medications-test.csv")
-        let text = try String(contentsOf: url, encoding: .utf8)
-        let result = CSVMedicationParser.parse(text)
+            .appending(path: "TestData/\(name)")
+        return CSVMedicationParser.parse(try String(contentsOf: url, encoding: .utf8))
+    }
+
+    /// The files used for importing in the simulator should keep parsing as expected.
+    @Test func prescriptionTestFileImportsCleanly() throws {
+        let result = try testData("medications-test.csv")
+        #expect(result.format == .prescription)
+        #expect(result.errors.isEmpty)
+        #expect(result.medications.count == 12)
+        let metoprolol = try #require(result.medications.first { $0.name == "Metoprolol" })
+        #expect(metoprolol.quantity == 0.5)
+        let albuterol = try #require(result.medications.first { $0.name == "Albuterol HFA" })
+        #expect(albuterol.schedule == .asNeeded(minHoursApart: 4, maxDosesPer24h: 4))
+    }
+
+    @Test func legacyTestFileImportsCleanly() throws {
+        let result = try testData("medications-test-legacy.csv")
+        #expect(result.format == .legacy)
         #expect(result.errors.isEmpty)
         #expect(result.medications.count == 9)
+    }
+
+    @Test func errorsTestFileReportsEachBadRow() throws {
+        let result = try testData("medications-test-errors.csv")
+        #expect(result.medications.map(\.name) == ["Lisinopril", "Fish \"Omega-3\" oil"])
+        #expect(result.errors.map(\.line) == Array(3...11))
     }
 }

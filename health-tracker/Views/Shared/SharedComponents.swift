@@ -8,6 +8,21 @@
 import SwiftUI
 import UserNotifications
 
+extension Binding {
+    /// Runs `action` whenever the binding is written, e.g. to note that the user edited a value.
+    func onSet(_ action: @escaping () -> Void) -> Binding {
+        Binding(get: { wrappedValue }, set: { wrappedValue = $0; action() })
+    }
+}
+
+extension Date {
+    /// The time to record for a log entry. When logging for today without touching the time
+    /// picker, that's the moment Save is tapped (not when the sheet opened); otherwise the chosen time.
+    static func logTime(chosen: Date, edited: Bool, day: Date, calendar: Calendar = .current) -> Date {
+        !edited && calendar.isDateInToday(day) ? .now : chosen
+    }
+}
+
 extension String {
     /// First letter uppercased, for phrases shown on their own ("twice daily…" → "Twice daily…").
     var sentenceCased: String { prefix(1).uppercased() + dropFirst() }
