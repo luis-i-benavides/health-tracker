@@ -184,10 +184,7 @@ final class HealthStore {
             guard let existing = medications.first(where: {
                 $0.name.compare(new.name, options: .caseInsensitive) == .orderedSame
             }) else { return new }
-            return Medication(
-                id: existing.id, name: new.name, dosage: new.dosage, unit: new.unit,
-                times: new.times, addedOn: existing.addedOn
-            )
+            return new.adoptingIdentity(of: existing)
         }
     }
 

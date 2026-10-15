@@ -59,25 +59,113 @@ extension Date {
     }
 }
 
+/// The total amount of drug in one dose, e.g. 2 tablets × 500 mg = 1,000 mg.
+struct DoseAmount: Hashable {
+    var value: Double
+    var unit: String
+}
+
+/// A medication described the way a prescription label describes it:
+/// drug name, strength, dose form and quantity, route, schedule, food rules and duration.
 struct Medication: Identifiable, Hashable {
     let id: UUID
+    /// As on the label; may be a brand name.
     var name: String
-    var dosage: Double
-    var unit: String
-    var times: [TimeOfDay]
+    /// Generic name when `name` is a brand, e.g. "metformin" for "Glucophage".
+    var genericName: String?
+    /// Amount of drug per unit (per tablet, per puff, per mL). `nil` when unknown.
+    var strength: Strength?
+    var form: DoseForm
+    /// Units per dose: 1 tablet, 0.5 tablet, 2 puffs, 10 mL.
+    var quantity: Double
+    var route: Route
+    var schedule: DoseSchedule
+    var foodRules: Set<FoodRule>
+    /// Fixed-length course; `nil` for ongoing medications.
+    var course: Course?
+    /// What it's for, e.g. "blood pressure" (shown as "for blood pressure").
+    var purpose: String?
     /// When this medication was first added. Earlier days don't show its doses as missed.
     var addedOn: Date
 
-    init(id: UUID = UUID(), name: String, dosage: Double, unit: String, times: [TimeOfDay], addedOn: Date = .now) {
+    init(
+        id: UUID = UUID(),
+        name: String,
+        genericName: String? = nil,
+        strength: Strength?,
+        form: DoseForm = .tablet,
+        quantity: Double = 1,
+        route: Route = .byMouth,
+        schedule: DoseSchedule,
+        foodRules: Set<FoodRule> = [],
+        course: Course? = nil,
+        purpose: String? = nil,
+        addedOn: Date = .now
+    ) {
         self.id = id
         self.name = name
-        self.dosage = dosage
-        self.unit = unit
-        self.times = times.sorted()
+        self.genericName = genericName
+        self.strength = strength
+        self.form = form
+        self.quantity = quantity
+        self.route = route
+        self.schedule = schedule
+        self.foodRules = foodRules
+        self.course = course
+        self.purpose = purpose
         self.addedOn = addedOn
     }
 
-    /// e.g. "10 mg", "2.5 ml" or "0.075 mg". Allows up to 4 decimals so small doses are never rounded.
+    /// Times of day a dose is due (empty for as-needed medications).
+    var times: [TimeOfDay] { schedule.times }
+
+    /// Total drug per dose, when it can be computed from the strength.
+    /// Not computed for percentages, insulin-style "units" doses, or concentrations
+    /// measured in something other than mL.
+    var doseAmount: DoseAmount? {
+        guard let strength, strength.isAmountPerUnit, form != .unit else { return nil }
+        if let perVolume = strength.perVolume {
+            guard form == .milliliter, strength.perVolumeUnit == "mL", perVolume > 0 else { return nil }
+            return DoseAmount(value: quantity * strength.value / perVolume, unit: strength.unit)
+        }
+        return DoseAmount(value: quantity * strength.value, unit: strength.unit)
+    }
+
+    /// This medication's instructions with another's identity and start date. Used on re-import
+    /// so an updated prescription stays linked to the existing medication's history.
+    func adoptingIdentity(of existing: Medication) -> Medication {
+        Medication(
+            id: existing.id, name: name, genericName: genericName, strength: strength,
+            form: form, quantity: quantity, route: route, schedule: schedule,
+            foodRules: foodRules, course: course, purpose: purpose, addedOn: existing.addedOn
+        )
+    }
+
+    // MARK: - Legacy bridge (CSV v1 and current screens). Screens move off these in Phase 3.
+
+    /// Builds a medication from the original `name,dosage,unit,times` CSV format: a daily
+    /// medication taken by mouth. "500 mg" becomes the strength of one tablet; a unit that's
+    /// a dose form ("1 tablet", "12 units", "5 mL") becomes the quantity instead.
+    init(id: UUID = UUID(), name: String, dosage: Double, unit: String, times: [TimeOfDay], addedOn: Date = .now) {
+        let isStrengthUnit = Strength.normalizedUnit(unit).map { !["units", "mL"].contains($0) } ?? false
+        if !isStrengthUnit, let form = DoseForm.parse(unit) {
+            self.init(id: id, name: name, strength: nil, form: form, quantity: dosage,
+                      schedule: .daily(times: times.sorted()), addedOn: addedOn)
+        } else {
+            self.init(id: id, name: name, strength: Strength(value: dosage, unit: unit),
+                      schedule: .daily(times: times.sorted()), addedOn: addedOn)
+        }
+    }
+
+    /// Amount per dose as a number: the drug amount when known, otherwise the unit count.
+    var dosage: Double { doseAmount?.value ?? quantity }
+
+    /// Unit for `dosage`: "mg" etc., or the dose form ("tablets").
+    var unit: String {
+        doseAmount?.unit ?? (quantity == 1 ? form.singular : form.plural)
+    }
+
+    /// e.g. "10 mg", "2.5 mL" or "0.075 mg". Allows up to 4 decimals so small doses are never rounded.
     var displayDosage: String {
         "\(dosage.formatted(.number.precision(.fractionLength(0...4)))) \(unit)"
     }
