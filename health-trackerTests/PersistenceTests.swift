@@ -11,7 +11,7 @@ import Testing
 struct PersistenceTests {
     /// A fresh, empty folder per test so tests never touch the app's real data.
     private let directory = FileManager.default.temporaryDirectory
-        .appending(path: "PersistenceTests-\(UUID().uuidString)")
+        .appending(path: "Persistence Tests \(UUID().uuidString)")
 
     private var persistence: HealthPersistence {
         HealthPersistence(fileURL: directory.appending(path: "HealthData.json"))
@@ -69,7 +69,7 @@ struct PersistenceTests {
         let store = HealthStore(persistence: persistence)
         #expect(store.medications.isEmpty)
 
-        let files = try FileManager.default.contentsOfDirectory(atPath: directory.path())
+        let files = try FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false))
         #expect(files.contains { $0.hasPrefix("HealthData.unreadable-") })
         #expect(!files.contains("HealthData.json"))
     }
@@ -92,9 +92,15 @@ struct PersistenceTests {
         #expect(store.measurementReminders.first { $0.kind == .bloodPressure }?.isEnabled == true)
     }
 
+    @Test func standardLocationIsApplicationSupport() {
+        let url = HealthPersistence.standard.fileURL
+        #expect(url.lastPathComponent == "HealthData.json")
+        #expect(url.path(percentEncoded: false).contains("/Application Support/"))
+    }
+
     @Test func inMemoryStoresDoNotWriteFiles() {
         let store = HealthStore()
         store.medications = [SampleData.lisinopril]
-        #expect(!FileManager.default.fileExists(atPath: directory.path()))
+        #expect(!FileManager.default.fileExists(atPath: directory.path(percentEncoded: false)))
     }
 }

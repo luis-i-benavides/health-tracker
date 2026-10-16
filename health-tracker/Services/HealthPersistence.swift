@@ -42,7 +42,9 @@ struct HealthPersistence {
     /// read is moved aside (`HealthData.unreadable-<date>.json`) so it isn't overwritten,
     /// and the app starts empty.
     func load() -> HealthSnapshot? {
-        guard FileManager.default.fileExists(atPath: fileURL.path()) else { return nil }
+        // `path(percentEncoded: false)`: the default `path()` encodes the space in
+        // "Application Support" as %20, so the file would never be found.
+        guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else { return nil }
         do {
             let data = try Data(contentsOf: fileURL)
             let snapshot = try JSONDecoder.health.decode(HealthSnapshot.self, from: data)
