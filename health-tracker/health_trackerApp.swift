@@ -10,7 +10,7 @@ import SwiftUI
 @main
 struct health_trackerApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var store = HealthStore()
+    @State private var store = HealthStore(persistence: .standard)
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {

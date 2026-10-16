@@ -37,12 +37,16 @@ struct MeasurementSlot: Identifiable, Hashable {
 /// In-memory app state. Persistence is not implemented yet.
 @Observable
 final class HealthStore {
-    var medications: [Medication]
-    var medicationLogs: [MedicationLog]
-    var symptomLogs: [SymptomLog]
-    var measurementLogs: [MeasurementLog]
-    var measurementReminders: [MeasurementReminder]
-    var medicationRemindersEnabled = true
+    // Saved data: each change is written to disk when the store has a persistence location.
+    var medications: [Medication] { didSet { save() } }
+    var medicationLogs: [MedicationLog] { didSet { save() } }
+    var symptomLogs: [SymptomLog] { didSet { save() } }
+    var measurementLogs: [MeasurementLog] { didSet { save() } }
+    var measurementReminders: [MeasurementReminder] { didSet { save() } }
+    var medicationRemindersEnabled = true { didSet { save() } }
+
+    /// The most recent problem writing data to disk, if any.
+    private(set) var lastSaveError: String?
 
     /// The most recent scheduling problem, shown by reminder screens.
     var lastSchedulingError: String?
@@ -53,6 +57,8 @@ final class HealthStore {
     private(set) var coursesWithRemindersEndingEarly: [Medication.ID: Date] = [:]
 
     private let scheduler = NotificationScheduler()
+    /// Where data is saved; `nil` keeps everything in memory (previews and tests).
+    private let persistence: HealthPersistence?
 
     init(
         medications: [Medication] = [],
@@ -68,6 +74,46 @@ final class HealthStore {
         self.symptomLogs = symptomLogs
         self.measurementLogs = measurementLogs
         self.measurementReminders = measurementReminders
+        self.persistence = nil
+    }
+
+    /// Loads saved data from `persistence` (if any) and saves every later change there.
+    init(persistence: HealthPersistence) {
+        let saved = persistence.load()
+        self.medications = saved?.medications ?? []
+        self.medicationLogs = saved?.medicationLogs ?? []
+        self.symptomLogs = saved?.symptomLogs ?? []
+        self.measurementLogs = saved?.measurementLogs ?? []
+        // Keep one reminder per measurement type, including types added since the data was saved.
+        let savedReminders = saved?.measurementReminders ?? []
+        self.measurementReminders = MeasurementKind.allCases.map { kind in
+            savedReminders.first { $0.kind == kind }
+                ?? MeasurementReminder(kind: kind, times: [TimeOfDay(hour: 8, minute: 0)], isEnabled: false)
+        }
+        self.medicationRemindersEnabled = saved?.medicationRemindersEnabled ?? true
+        self.persistence = persistence
+    }
+
+    /// The data that gets saved.
+    var snapshot: HealthSnapshot {
+        HealthSnapshot(
+            medications: medications,
+            medicationLogs: medicationLogs,
+            symptomLogs: symptomLogs,
+            measurementLogs: measurementLogs,
+            measurementReminders: measurementReminders,
+            medicationRemindersEnabled: medicationRemindersEnabled
+        )
+    }
+
+    private func save() {
+        guard let persistence else { return }
+        do {
+            try persistence.save(snapshot)
+            lastSaveError = nil
+        } catch {
+            lastSaveError = "Couldn't save your data: \(error.localizedDescription)"
+        }
     }
 
     static var preview: HealthStore {
@@ -214,9 +260,8 @@ final class HealthStore {
     }
 
     /// Re-plans reminders when the app becomes active, so course reminders roll forward.
-    /// Never prompts for permission. Skipped while no medications are loaded: data isn't saved
-    /// between launches yet, and rescheduling an empty list would delete reminders still pending
-    /// from the previous session.
+    /// Never prompts for permission. Skipped while no medications are loaded, so that if saved
+    /// data ever fails to load, the reminders still pending from before aren't deleted.
     func refreshRemindersIfAuthorized() async {
         guard !medications.isEmpty else { return }
         switch await scheduler.authorizationStatus() {

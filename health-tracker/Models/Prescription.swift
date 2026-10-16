@@ -13,7 +13,7 @@ import Foundation
 
 /// The amount of drug in one unit of the dose form, e.g. 500 mg per tablet,
 /// or a concentration such as 5 mg/5 mL or 100 units/mL.
-struct Strength: Hashable {
+struct Strength: Hashable, Codable {
     var value: Double
     /// Normalized unit symbol, e.g. "mg", "mcg", "mL", "units", "IU", "%".
     var unit: String
@@ -71,7 +71,7 @@ struct Strength: Hashable {
 // MARK: - Dose form
 
 /// What one unit of the medication is. Quantities are counted in these units ("2 puffs").
-enum DoseForm: String, CaseIterable, Hashable {
+enum DoseForm: String, CaseIterable, Hashable, Codable {
     case tablet, capsule, milliliter, puff, drop, patch, application, spray, unit, suppository
 
     var singular: String {
@@ -113,7 +113,7 @@ enum DoseForm: String, CaseIterable, Hashable {
 // MARK: - Route
 
 /// How the drug enters the body. Determines the instruction's verb and phrasing.
-enum Route: String, CaseIterable, Hashable {
+enum Route: String, CaseIterable, Hashable, Codable {
     case byMouth, sublingual, inhaled, topical, transdermal, eye, ear, nasal
     case subcutaneous, intramuscular, rectal
 
@@ -186,7 +186,7 @@ enum Route: String, CaseIterable, Hashable {
 
 // MARK: - Food and drink rules
 
-enum FoodRule: String, CaseIterable, Hashable, Comparable {
+enum FoodRule: String, CaseIterable, Hashable, Comparable, Codable {
     case withFood, emptyStomach, fullGlassOfWater, avoidGrapefruit, avoidAlcohol
 
     /// Rules that read as part of the instruction sentence ("…with food").
@@ -227,7 +227,7 @@ enum FoodRule: String, CaseIterable, Hashable, Comparable {
 // MARK: - Schedule
 
 /// Day of the week, numbered like `Calendar.component(.weekday, …)` (Sunday = 1).
-enum Weekday: Int, CaseIterable, Hashable, Comparable {
+enum Weekday: Int, CaseIterable, Hashable, Comparable, Codable {
     case sunday = 1, monday, tuesday, wednesday, thursday, friday, saturday
 
     var name: String {
@@ -256,7 +256,7 @@ enum Weekday: Int, CaseIterable, Hashable, Comparable {
     }
 }
 
-enum DoseSchedule: Hashable {
+enum DoseSchedule: Hashable, Codable {
     /// Every day at fixed times ("twice daily" → 8 AM and 8 PM).
     case daily(times: [TimeOfDay])
     /// Around the clock at a fixed interval ("every 8 hours"). The interval divides 24.
@@ -306,7 +306,7 @@ enum DoseSchedule: Hashable {
 // MARK: - Course
 
 /// A fixed-length course, e.g. 10 days of an antibiotic. Medications without one are ongoing.
-struct Course: Hashable {
+struct Course: Hashable, Codable {
     /// Start of the first day of the course.
     var startDate: Date
     var days: Int

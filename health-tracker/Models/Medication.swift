@@ -6,7 +6,7 @@
 import Foundation
 
 /// A time of day (24-hour clock) at which something is scheduled.
-struct TimeOfDay: Hashable, Comparable, Identifiable {
+struct TimeOfDay: Hashable, Comparable, Identifiable, Codable {
     let hour: Int
     let minute: Int
 
@@ -67,7 +67,7 @@ struct DoseAmount: Hashable {
 
 /// A medication described the way a prescription label describes it:
 /// drug name, strength, dose form and quantity, route, schedule, food rules and duration.
-struct Medication: Identifiable, Hashable {
+struct Medication: Identifiable, Hashable, Codable {
     let id: UUID
     /// As on the label; may be a brand name.
     var name: String

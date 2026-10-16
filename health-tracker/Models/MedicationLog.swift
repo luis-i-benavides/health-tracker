@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// What actually happened for a dose.
-enum DoseStatus: String, CaseIterable, Identifiable {
+enum DoseStatus: String, CaseIterable, Identifiable, Codable {
     case taken
     case partial
     case skipped
@@ -43,7 +43,7 @@ enum DoseStatus: String, CaseIterable, Identifiable {
 }
 
 /// A record of a medication the user actually took (or skipped).
-struct MedicationLog: Identifiable, Hashable {
+struct MedicationLog: Identifiable, Hashable, Codable {
     let id: UUID
     var medicationID: Medication.ID
     /// The scheduled slot this log satisfies, if any (nil for unscheduled/extra doses).

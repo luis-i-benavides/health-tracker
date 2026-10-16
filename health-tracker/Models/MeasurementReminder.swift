@@ -13,7 +13,7 @@ struct MeasurementField: Hashable {
     let validRange: ClosedRange<Double>
 }
 
-enum MeasurementKind: String, CaseIterable, Identifiable {
+enum MeasurementKind: String, CaseIterable, Identifiable, Codable {
     case bloodPressure
     case heartRate
     case oxygenSaturation
@@ -84,7 +84,7 @@ enum MeasurementKind: String, CaseIterable, Identifiable {
     }
 }
 
-struct MeasurementReminder: Identifiable, Hashable {
+struct MeasurementReminder: Identifiable, Hashable, Codable {
     var kind: MeasurementKind
     var times: [TimeOfDay]
     var isEnabled: Bool {
@@ -100,7 +100,7 @@ struct MeasurementReminder: Identifiable, Hashable {
 }
 
 /// A recorded reading, e.g. blood pressure 128/84 mmHg.
-struct MeasurementLog: Identifiable, Hashable {
+struct MeasurementLog: Identifiable, Hashable, Codable {
     let id: UUID
     var kind: MeasurementKind
     /// One value per `kind.fields` entry, in the same order.

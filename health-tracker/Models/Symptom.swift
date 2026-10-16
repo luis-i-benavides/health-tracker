@@ -6,7 +6,7 @@
 import SwiftUI
 
 /// The predefined symptoms shown in the dropdown.
-enum SymptomType: String, CaseIterable, Identifiable {
+enum SymptomType: String, CaseIterable, Identifiable, Codable {
     case headache
     case nausea
     case dizziness
@@ -54,7 +54,7 @@ enum SymptomType: String, CaseIterable, Identifiable {
     }
 }
 
-enum Severity: Int, CaseIterable, Identifiable, Comparable {
+enum Severity: Int, CaseIterable, Identifiable, Comparable, Codable {
     case mild = 1
     case moderate = 2
     case severe = 3
@@ -91,7 +91,7 @@ enum Severity: Int, CaseIterable, Identifiable, Comparable {
     }
 }
 
-struct SymptomLog: Identifiable, Hashable {
+struct SymptomLog: Identifiable, Hashable, Codable {
     let id: UUID
     var type: SymptomType
     /// Free text used when `type` is `.other`.
