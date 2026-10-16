@@ -17,8 +17,9 @@ struct LogMeasurementView: View {
     let day: Date
 
     @State private var kind: MeasurementKind
-    /// One entry per `kind.fields`; `nil` until the user types a number.
-    @State private var values: [Double?]
+    /// What's typed in each `kind.fields` entry. Kept as text (not a number-formatted field,
+    /// which only takes the value on Return — and the decimal pad has no Return key).
+    @State private var texts: [String]
     @State private var takenAt: Date
     /// Whether the user changed the time; until then a reading for today is logged at Save time.
     @State private var takenAtEdited = false
@@ -32,7 +33,7 @@ struct LogMeasurementView: View {
         editing = nil
         _takenAt = State(initialValue: .defaultLogTime(on: day, scheduled: scheduledTime))
         _kind = State(initialValue: kind)
-        _values = State(initialValue: Array(repeating: nil, count: kind.fields.count))
+        _texts = State(initialValue: Array(repeating: "", count: kind.fields.count))
     }
 
     /// Edits a recorded reading, prefilled with its values.
@@ -44,7 +45,9 @@ struct LogMeasurementView: View {
         // Keep the recorded time unless the user changes it.
         _takenAtEdited = State(initialValue: true)
         _kind = State(initialValue: log.kind)
-        _values = State(initialValue: log.values.map(Optional.some))
+        _texts = State(initialValue: log.values.map {
+            $0.formatted(.number.precision(.fractionLength(0...2)).grouping(.never))
+        })
         _note = State(initialValue: log.note)
     }
 
@@ -53,9 +56,23 @@ struct LogMeasurementView: View {
 
     private var fields: [MeasurementField] { kind.fields }
 
-    /// Messages for values outside the plausible range (likely typos).
+    /// The typed numbers; `nil` where a field is empty or isn't a number.
+    /// Parsed for the current locale, so "36,6" works where a comma is the decimal separator.
+    private var values: [Double?] {
+        texts.map { text in
+            let trimmed = text.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { return nil }
+            return try? Double(trimmed, format: .number)
+        }
+    }
+
+    /// Messages for text that isn't a number, or values outside the plausible range (likely typos).
     private var problems: [String] {
-        zip(fields, values).compactMap { field, value in
+        zip(fields, zip(texts, values)).compactMap { field, entry in
+            let (text, value) = entry
+            if value == nil, !text.trimmingCharacters(in: .whitespaces).isEmpty {
+                return "\(field.label) must be a number."
+            }
             guard let value, !field.validRange.contains(value) else { return nil }
             let low = field.validRange.lowerBound.formatted()
             let high = field.validRange.upperBound.formatted()
@@ -101,8 +118,7 @@ struct LogMeasurementView: View {
                         HStack {
                             Text(field.label)
                             Spacer()
-                            TextField(field.label, value: valueBinding(at: index), format: .number,
-                                      prompt: Text("0"))
+                            TextField(field.label, text: textBinding(at: index), prompt: Text("0"))
                                 .keyboardType(.decimalPad)
                                 .multilineTextAlignment(.trailing)
                                 .frame(maxWidth: 100)
@@ -147,7 +163,7 @@ struct LogMeasurementView: View {
                 DialogSaveButton(isEnabled: canSave, action: save)
             }
             .onChange(of: kind) {
-                values = Array(repeating: nil, count: kind.fields.count)
+                texts = Array(repeating: "", count: kind.fields.count)
             }
         }
         .presentationDetents([.medium, .large])
@@ -155,12 +171,12 @@ struct LogMeasurementView: View {
     }
 
     /// Bounds-safe binding: when the measurement type changes, the new fields can render
-    /// before `values` is resized in `onChange`.
-    private func valueBinding(at index: Int) -> Binding<Double?> {
+    /// before `texts` is resized in `onChange`.
+    private func textBinding(at index: Int) -> Binding<String> {
         Binding(
-            get: { values.indices.contains(index) ? values[index] : nil },
+            get: { texts.indices.contains(index) ? texts[index] : "" },
             set: { newValue in
-                if values.indices.contains(index) { values[index] = newValue }
+                if texts.indices.contains(index) { texts[index] = newValue }
             }
         )
     }
