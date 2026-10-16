@@ -214,3 +214,59 @@ struct MedicationTests {
         #expect(merged.foodRules == [.withFood])
     }
 }
+
+@MainActor
+struct GrainsAndPresetTests {
+    @Test func grainsAreAStrengthUnit() throws {
+        let strength = try #require(Strength(parsing: "5 gr"))
+        #expect(strength.unit == "gr")
+        #expect(Strength(parsing: "1 grain")?.unit == "gr")
+        #expect(Strength(parsing: "5 grains")?.value == 5)
+        // Grams stay grams.
+        #expect(Strength(parsing: "1 g")?.unit == "g")
+        #expect(PrescriptionFormatter().strengthText(strength) == "5 gr")
+    }
+
+    @Test func csvImportAcceptsGrains() {
+        let result = CSVMedicationParser.parse("""
+        name,strength,form,quantity,frequency
+        Aspirin,5 gr,tablet,1,once daily
+        """)
+        #expect(result.errors.isEmpty)
+        #expect(result.medications.first?.strength?.unit == "gr")
+    }
+
+    @Test func presetsUseMealTimes() {
+        let meals = MealTimes.standard
+        #expect(meals.doseTimes(perDay: 1) == [meals.breakfast])
+        #expect(meals.doseTimes(perDay: 2) == [meals.breakfast, meals.dinner])
+        #expect(meals.doseTimes(perDay: 3) == [meals.breakfast, meals.lunch, meals.dinner])
+        #expect(meals.doseTimes(perDay: 4) == [meals.breakfast, meals.lunch, meals.dinner, meals.bedtime])
+    }
+}
+
+@MainActor
+struct PainLocationTests {
+    @Test func painTypesTakeABodyPart() {
+        let log = SymptomLog(type: .neuropathicPain, bodyPart: .legs, severity: .moderate)
+        #expect(log.displayName == "Neuropathic pain (legs)")
+        #expect(SymptomLog(type: .jointPain, bodyPart: .lowerBack, severity: .mild).displayName == "Joint pain (lower back)")
+        #expect(SymptomLog(type: .nociceptivePain, severity: .mild).displayName == "Nociceptive pain")
+    }
+
+    @Test func otherSymptomsIgnoreABodyPart() {
+        #expect(SymptomLog(type: .headache, bodyPart: .arms, severity: .mild).bodyPart == nil)
+    }
+
+    @Test func bodyPartRoundTripsAndOlderDataStillLoads() throws {
+        let log = SymptomLog(type: .nociceptivePain, bodyPart: .upperBack, severity: .severe)
+        let decoded = try JSONDecoder().decode(SymptomLog.self, from: JSONEncoder().encode(log))
+        #expect(decoded.bodyPart == .upperBack)
+
+        // A symptom saved before body parts existed has no "bodyPart" key.
+        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(log)) as? [String: Any])
+        json["bodyPart"] = nil
+        let old = try JSONDecoder().decode(SymptomLog.self, from: JSONSerialization.data(withJSONObject: json))
+        #expect(old.bodyPart == nil)
+    }
+}

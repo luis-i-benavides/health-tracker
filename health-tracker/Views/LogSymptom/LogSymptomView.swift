@@ -16,6 +16,8 @@ struct LogSymptomView: View {
 
     @State private var type: SymptomType
     @State private var customName = ""
+    /// Where it hurts, for pain types.
+    @State private var bodyPart: BodyPart?
     /// 1–10 intensity, mapped to mild / moderate / severe.
     @State private var score: Double = 5
     @State private var date: Date
@@ -38,6 +40,7 @@ struct LogSymptomView: View {
         editing = log
         _type = State(initialValue: log.type)
         _customName = State(initialValue: log.customName)
+        _bodyPart = State(initialValue: log.bodyPart)
         // Only the severity is stored, so start the slider in the middle of its range.
         _score = State(initialValue: Self.score(for: log.severity))
         _date = State(initialValue: log.date)
@@ -72,6 +75,15 @@ struct LogSymptomView: View {
                     .pickerStyle(.menu)
                     if type == .other {
                         TextField("Describe the symptom", text: $customName)
+                    }
+                    if type.hasBodyLocation {
+                        Picker("Where", selection: $bodyPart) {
+                            Text("Not specified").tag(BodyPart?.none)
+                            ForEach(BodyPart.allCases) { part in
+                                Text(part.label).tag(Optional(part))
+                            }
+                        }
+                        .pickerStyle(.menu)
                     }
                 }
 
@@ -131,6 +143,7 @@ struct LogSymptomView: View {
             id: editing?.id ?? UUID(),
             type: type,
             customName: type == .other ? customName.trimmingCharacters(in: .whitespaces) : "",
+            bodyPart: bodyPart,
             severity: severity,
             date: .logTime(chosen: date, edited: dateEdited, day: day),
             note: note
@@ -151,5 +164,10 @@ struct LogSymptomView: View {
 
 #Preview("Log Symptom – Dialog") {
     LogSymptomView(type: .nausea)
+        .environment(HealthStore.preview)
+}
+
+#Preview("Log Symptom – Pain Location") {
+    LogSymptomView(type: .neuropathicPain)
         .environment(HealthStore.preview)
 }

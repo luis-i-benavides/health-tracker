@@ -29,10 +29,15 @@ struct MedicationsView: View {
                         Button {
                             isOptimizing = true
                         } label: {
-                            Label("Optimize Schedule", systemImage: "sparkles")
-                                .font(.headline)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 4)
+                            // An HStack rather than a Label: in a List, Label reserves a
+                            // leading icon column, which pushed the title off center.
+                            HStack(spacing: 8) {
+                                Image(systemName: "sparkles")
+                                Text("Optimize Schedule")
+                            }
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
                         }
                         .buttonStyle(.glassProminent)
                         .listRowInsets(EdgeInsets())

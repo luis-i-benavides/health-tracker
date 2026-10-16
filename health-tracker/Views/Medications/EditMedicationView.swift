@@ -43,6 +43,8 @@ struct EditMedicationView: View {
     @State private var route: Route
     @State private var scheduleKind: ScheduleKind
     @State private var times: [EditableTime]
+    /// Daily schedules: how many doses a day, placed at meal times; `nil` for specific times.
+    @State private var dosesPerDay: Int?
     @State private var interval: Int
     @State private var firstDose: TimeOfDay
     @State private var bedtime: TimeOfDay
@@ -92,6 +94,8 @@ struct EditMedicationView: View {
         case nil: break
         }
         _scheduleKind = State(initialValue: kind)
+        // New medications start as "once daily"; existing ones show their saved times.
+        _dosesPerDay = State(initialValue: med == nil ? 1 : nil)
         _times = State(initialValue: times.sorted().map { EditableTime(time: $0) })
         _interval = State(initialValue: interval)
         _firstDose = State(initialValue: firstDose)
@@ -114,9 +118,9 @@ struct EditMedicationView: View {
         var problems: [String] = []
         if trimmedName.isEmpty { problems.append("Enter a name.") }
         if !strengthText.trimmingCharacters(in: .whitespaces).isEmpty, strength == nil {
-            problems.append("Strength should look like \"500 mg\", \"5 mg/5 mL\" or \"0.1%\".")
+            problems.append("Strength should look like \"500 mg\", \"5 gr\", \"5 mg/5 mL\" or \"0.1%\".")
         }
-        if [.daily, .weekly].contains(scheduleKind) {
+        if scheduleKind == .weekly || (scheduleKind == .daily && dosesPerDay == nil) {
             if times.isEmpty { problems.append("Add at least one time.") }
             if Set(times.map(\.time)).count != times.count { problems.append("Two doses are at the same time.") }
         }
@@ -130,7 +134,7 @@ struct EditMedicationView: View {
     private var schedule: DoseSchedule {
         let sortedTimes = times.map(\.time).sorted()
         return switch scheduleKind {
-        case .daily: .daily(times: sortedTimes)
+        case .daily: .daily(times: dosesPerDay.map { store.mealTimes.doseTimes(perDay: $0) } ?? sortedTimes)
         case .everyHours: .everyHours(interval: interval, firstDose: firstDose)
         case .bedtime: .atBedtime(bedtime)
         case .weekly: .weekly(days: weekdays, times: sortedTimes)
@@ -243,14 +247,17 @@ struct EditMedicationView: View {
             case .daily, .weekly:
                 if scheduleKind == .weekly {
                     weekdayPicker
+                } else {
+                    Picker("How often", selection: $dosesPerDay) {
+                        Text("Once daily").tag(Int?.some(1))
+                        Text("Twice daily").tag(Int?.some(2))
+                        Text("Three times daily").tag(Int?.some(3))
+                        Text("Four times daily").tag(Int?.some(4))
+                        Text("At specific times").tag(Int?.none)
+                    }
                 }
-                ForEach($times) { $entry in
-                    DatePicker("Dose", selection: $entry.time.asDate, displayedComponents: .hourAndMinute)
-                }
-                .onDelete { times.remove(atOffsets: $0) }
-                Button("Add Time", systemImage: "plus") {
-                    let last = times.map(\.time).max() ?? TimeOfDay(hour: 8, minute: 0)
-                    times.append(EditableTime(time: TimeOfDay(hour: min(last.hour + 4, 23), minute: last.minute)))
+                if scheduleKind == .weekly || dosesPerDay == nil {
+                    timeRows
                 }
             case .everyHours:
                 Picker("Every", selection: $interval) {
@@ -275,9 +282,24 @@ struct EditMedicationView: View {
             let scheduleProblems = problems.filter { $0.contains("time") || $0.contains("day.") }
             if !scheduleProblems.isEmpty {
                 Text(scheduleProblems.joined(separator: "\n")).foregroundStyle(.red)
+            } else if scheduleKind == .daily, dosesPerDay != nil {
+                Text("\(formatter.scheduleText(schedule).sentenceCased), at your meal times. Use Optimize Schedule to fine-tune them.")
             } else {
                 Text(formatter.scheduleText(schedule).sentenceCased)
             }
+        }
+    }
+
+    /// One picker per dose time, plus Add Time.
+    @ViewBuilder
+    private var timeRows: some View {
+        ForEach($times) { $entry in
+            DatePicker("Dose", selection: $entry.time.asDate, displayedComponents: .hourAndMinute)
+        }
+        .onDelete { times.remove(atOffsets: $0) }
+        Button("Add Time", systemImage: "plus") {
+            let last = times.map(\.time).max() ?? TimeOfDay(hour: 8, minute: 0)
+            times.append(EditableTime(time: TimeOfDay(hour: min(last.hour + 4, 23), minute: last.minute)))
         }
     }
 

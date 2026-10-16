@@ -219,7 +219,7 @@ enum CSVMedicationParser {
         if Double(text) != nil {
             throw RowError("Strength “\(text)” needs a unit, e.g. \(text) mg.")
         }
-        throw RowError("Strength “\(text)” isn't recognized. Use a number and unit, e.g. 500 mg, 90 mcg, 5 mg/5 mL or 0.1%.")
+        throw RowError("Strength “\(text)” isn't recognized. Use a number and unit, e.g. 500 mg, 90 mcg, 5 gr, 5 mg/5 mL or 0.1%.")
     }
 
     /// "1", "0.5", ".5", "1/2", "½", "1½", "1 1/2".

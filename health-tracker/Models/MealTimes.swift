@@ -26,6 +26,17 @@ struct MealTimes: Hashable, Codable {
         [("breakfast", breakfast), ("lunch", lunch), ("dinner", dinner)]
     }
 
+    /// Default dose times for `count` doses a day, at meals: once → breakfast; twice →
+    /// breakfast and dinner; three times → plus lunch; four times → plus bedtime.
+    func doseTimes(perDay count: Int) -> [TimeOfDay] {
+        switch count {
+        case 1: [breakfast]
+        case 2: [breakfast, dinner]
+        case 3: [breakfast, lunch, dinner]
+        default: [breakfast, lunch, dinner, bedtime]
+        }
+    }
+
     /// The meal within `toleranceMinutes` of `time`, if any.
     func meal(near time: TimeOfDay, toleranceMinutes: Int = 30) -> String? {
         meals.first { abs($0.time.id - time.id) <= toleranceMinutes }?.name

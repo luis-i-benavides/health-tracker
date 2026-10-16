@@ -16,6 +16,8 @@ enum SymptomType: String, CaseIterable, Identifiable, Codable {
     case cough
     case insomnia
     case jointPain
+    case nociceptivePain
+    case neuropathicPain
     case rash
     case other
 
@@ -32,6 +34,8 @@ enum SymptomType: String, CaseIterable, Identifiable, Codable {
         case .cough: "Cough"
         case .insomnia: "Insomnia"
         case .jointPain: "Joint pain"
+        case .nociceptivePain: "Nociceptive pain"
+        case .neuropathicPain: "Neuropathic pain"
         case .rash: "Rash"
         case .other: "Other"
         }
@@ -48,8 +52,34 @@ enum SymptomType: String, CaseIterable, Identifiable, Codable {
         case .cough: "wind"
         case .insomnia: "moon.zzz"
         case .jointPain: "figure.walk"
+        case .nociceptivePain: "bandage"
+        case .neuropathicPain: "bolt"
         case .rash: "allergens"
         case .other: "ellipsis.circle"
+        }
+    }
+
+    /// Pain types logged with where in the body they're felt.
+    var hasBodyLocation: Bool {
+        switch self {
+        case .jointPain, .nociceptivePain, .neuropathicPain: true
+        default: false
+        }
+    }
+}
+
+/// Where a pain symptom is felt.
+enum BodyPart: String, CaseIterable, Identifiable, Codable {
+    case upperBack, lowerBack, arms, legs
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .upperBack: "Upper back"
+        case .lowerBack: "Lower back"
+        case .arms: "Arms"
+        case .legs: "Legs"
         }
     }
 }
@@ -99,11 +129,14 @@ struct SymptomLog: Identifiable, Hashable, Codable {
     var severity: Severity
     var date: Date
     var note: String
+    /// For pain types; `nil` when not given. Optional so data saved before it existed still loads.
+    var bodyPart: BodyPart?
 
     init(
         id: UUID = UUID(),
         type: SymptomType,
         customName: String = "",
+        bodyPart: BodyPart? = nil,
         severity: Severity,
         date: Date = .now,
         note: String = ""
@@ -111,12 +144,16 @@ struct SymptomLog: Identifiable, Hashable, Codable {
         self.id = id
         self.type = type
         self.customName = customName
+        self.bodyPart = type.hasBodyLocation ? bodyPart : nil
         self.severity = severity
         self.date = date
         self.note = note
     }
 
+    /// e.g. "Headache", "Neuropathic pain (legs)", or the custom name for "Other".
     var displayName: String {
-        type == .other && !customName.isEmpty ? customName : type.label
+        let name = type == .other && !customName.isEmpty ? customName : type.label
+        guard let bodyPart else { return name }
+        return "\(name) (\(bodyPart.label.lowercased()))"
     }
 }

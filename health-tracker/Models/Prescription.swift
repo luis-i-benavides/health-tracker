@@ -28,7 +28,7 @@ struct Strength: Hashable, Codable {
         self.perVolumeUnit = perVolumeUnit.map { Strength.normalizedUnit($0) ?? $0 }
     }
 
-    /// Parses "500 mg", "500mg", "90 mcg", "0.1%", "5 mg/5 mL", "100 units/mL".
+    /// Parses "500 mg", "500mg", "90 mcg", "5 gr", "0.1%", "5 mg/5 mL", "100 units/mL".
     /// Returns `nil` if there's no number, no unit, or the unit isn't recognized.
     init?(parsing text: String) {
         let pattern = /^\s*(\d*\.?\d+)\s*([A-Za-zµ%]+)\s*(?:\/\s*(\d*\.?\d+)?\s*([A-Za-z]+))?\s*$/
@@ -57,6 +57,8 @@ struct Strength: Hashable, Codable {
         case "mg", "milligram", "milligrams": "mg"
         case "mcg", "µg", "ug", "microgram", "micrograms": "mcg"
         case "g", "gram", "grams": "g"
+        // Apothecary grains (e.g. aspirin 5 gr, thyroid 1 gr); not to be confused with grams.
+        case "gr", "grain", "grains": "gr"
         case "ml", "milliliter", "milliliters", "millilitre", "millilitres": "mL"
         case "l", "liter", "liters", "litre", "litres": "L"
         case "unit", "units": "units"
