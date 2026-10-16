@@ -196,3 +196,40 @@ enum SampleData {
     Ibuprofen,200 mg,tablet,1,by mouth,as needed,,,,pain
     """
 }
+
+extension SampleData {
+    /// A suggestion like one Claude might return for the sample medications, checked the
+    /// same way a real one is (keys follow `SampleData.medications` order).
+    static var scheduleProposal: ScheduleProposal {
+        let suggestion = ScheduleSuggestion(
+            summary: "Your doses move to four times a day: breakfast, lunch, dinner and bedtime. Metformin and amoxicillin, which can upset the stomach, are taken with meals.",
+            medications: [
+                .init(key: "m1", times: ["08:00"], takeWithFood: false,
+                      reason: "Morning dosing keeps blood pressure controlled through the day."),
+                .init(key: "m2", times: ["08:00", "19:00"], takeWithFood: false,
+                      reason: "Moved the evening dose to dinner, since it must be taken with food."),
+                .init(key: "m3", times: ["22:30"], takeWithFood: false,
+                      reason: "Bedtime, together with your eye drops."),
+                .init(key: "m4", times: ["08:00"], takeWithFood: false,
+                      reason: "Vitamin D is absorbed best with a meal; breakfast joins your other morning doses."),
+                .init(key: "m5", times: ["08:00", "12:30", "19:00"], takeWithFood: false,
+                      reason: "Three doses with meals reduce nausea and stomach upset."),
+                .init(key: "m7", times: ["22:30"], takeWithFood: false,
+                      reason: "Eye drops work best at bedtime."),
+            ],
+            warnings: [
+                .init(severity: .caution,
+                      message: "Amoxicillin often causes nausea. You don't have a scheduled anti-nausea medication; if nausea continues, ask your prescriber.",
+                      medicationKeys: ["m5"]),
+                .init(severity: .info,
+                      message: "Avoid grapefruit with atorvastatin.",
+                      medicationKeys: ["m3"]),
+            ]
+        )
+        return ScheduleOptimizer.proposal(
+            from: suggestion,
+            keyed: ScheduleOptimizer.keyed(medications),
+            mealTimes: MealTimes.standard
+        )
+    }
+}

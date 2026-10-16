@@ -1,0 +1,237 @@
+//
+//  ScheduleOptimizerTests.swift
+//  health-trackerTests
+//
+//  Request building, response handling and suggestion checks. No network calls.
+//
+
+import Foundation
+import Testing
+@testable import health_tracker
+
+@MainActor
+struct ScheduleOptimizerRequestTests {
+    @Test func requestUsesStructuredOutputAndFallbacks() throws {
+        let body = ScheduleOptimizer.requestBody(prompt: "Hello")
+        #expect(body["model"] as? String == "claude-opus-5-5")
+        #expect(body["fallbacks"] as? String == "default")
+        #expect((body["thinking"] as? [String: Any])?["type"] as? String == "adaptive")
+        let output = try #require(body["output_config"] as? [String: Any])
+        #expect(output["effort"] as? String == "high")
+        let format = try #require(output["format"] as? [String: Any])
+        #expect(format["type"] as? String == "json_schema")
+        // The body must serialize to JSON as-is.
+        #expect(throws: Never.self) { try JSONSerialization.data(withJSONObject: body) }
+    }
+
+    @Test func promptDescribesEachMedicationAndRoutine() {
+        let keyed = ScheduleOptimizer.keyed(SampleData.medications)
+        let symptoms = [SymptomLog(type: .nausea, severity: .moderate, date: TimeOfDay(hour: 9, minute: 10).date())]
+        let prompt = ScheduleOptimizer.prompt(keyed: keyed, mealTimes: .standard, symptoms: symptoms)
+
+        #expect(prompt.contains("breakfast 08:00"))
+        #expect(prompt.contains("key: m2"))
+        #expect(prompt.contains("name: Metformin"))
+        #expect(prompt.contains("2× daily, currently 08:00, 20:00 — choose 2 time(s)"))
+        #expect(prompt.contains("with food"))
+        // Albuterol is listed as as-needed, not scheduled.
+        let asNeededPart = prompt.components(separatedBy: "As needed (not scheduled):").last ?? ""
+        #expect(asNeededPart.contains("Albuterol"))
+        #expect(prompt.contains("- Nausea: 1 time(s) (worst: moderate), at 09:10"))
+    }
+
+    @Test func finishedCoursesAreLeftOut() {
+        let finished = Medication(
+            name: "Old antibiotic", strength: nil, schedule: .daily(times: [TimeOfDay(hour: 8, minute: 0)]),
+            course: Course(startDate: .now.addingTimeInterval(-30 * 86_400), days: 5)
+        )
+        let included = ScheduleOptimizer.medicationsToSchedule([finished, SampleData.amoxicillin], today: .now)
+        #expect(included.map(\.name) == [SampleData.amoxicillin.name])
+    }
+}
+
+@MainActor
+struct ScheduleOptimizerResponseTests {
+    private func response(stopReason: String = "end_turn", text: String) -> Data {
+        let json: [String: Any] = [
+            "stop_reason": stopReason,
+            "content": [
+                ["type": "thinking", "thinking": ""],
+                ["type": "text", "text": text],
+            ],
+        ]
+        return try! JSONSerialization.data(withJSONObject: json)
+    }
+
+    private let validAnswer = """
+    {"summary":"Fewer times.","medications":[{"key":"m1","times":["08:00"],"takeWithFood":true,"reason":"Breakfast."}],
+     "warnings":[{"severity":"caution","message":"Watch for nausea.","medicationKeys":["m1"]}]}
+    """
+
+    @Test func readsTheTextBlockAndSkipsThinking() throws {
+        let suggestion = try ScheduleOptimizer.decodeResponse(response(text: validAnswer), status: 200)
+        #expect(suggestion.summary == "Fewer times.")
+        #expect(suggestion.medications.first?.takeWithFood == true)
+        #expect(suggestion.warnings.first?.severity == .caution)
+    }
+
+    @Test func refusalAndTruncationAreReported() {
+        #expect(throws: ScheduleOptimizerError.refused) {
+            try ScheduleOptimizer.decodeResponse(response(stopReason: "refusal", text: ""), status: 200)
+        }
+        #expect(throws: ScheduleOptimizerError.truncated) {
+            try ScheduleOptimizer.decodeResponse(response(stopReason: "max_tokens", text: "{"), status: 200)
+        }
+        #expect(throws: ScheduleOptimizerError.malformedResponse) {
+            try ScheduleOptimizer.decodeResponse(response(text: "not json"), status: 200)
+        }
+    }
+
+    @Test func httpErrorsMapToMessages() {
+        let error = Data(#"{"type":"error","error":{"type":"invalid_request_error","message":"Bad schema"}}"#.utf8)
+        #expect(throws: ScheduleOptimizerError.invalidAPIKey) { try ScheduleOptimizer.decodeResponse(error, status: 401) }
+        #expect(throws: ScheduleOptimizerError.rateLimited) { try ScheduleOptimizer.decodeResponse(error, status: 429) }
+        #expect(throws: ScheduleOptimizerError.overloaded) { try ScheduleOptimizer.decodeResponse(error, status: 529) }
+        #expect(throws: ScheduleOptimizerError.server(status: 400, message: "Bad schema")) {
+            try ScheduleOptimizer.decodeResponse(error, status: 400)
+        }
+    }
+}
+
+@MainActor
+struct ScheduleSuggestionCheckTests {
+    private func t(_ hour: Int, _ minute: Int = 0) -> TimeOfDay { TimeOfDay(hour: hour, minute: minute) }
+
+    private func entry(_ times: [String], withFood: Bool = false) -> ScheduleSuggestion.MedicationTimes {
+        .init(key: "m1", times: times, takeWithFood: withFood, reason: "Because.")
+    }
+
+    private func check(_ medication: Medication, _ times: [String], withFood: Bool = false) -> ProposedScheduleChange {
+        ScheduleOptimizer.checkedChange(for: medication, entry: entry(times, withFood: withFood), mealTimes: .standard)
+    }
+
+    @Test func dailyTimesAreReplaced() {
+        let change = check(SampleData.metformin, ["19:00", "08:00"])
+        #expect(change.problem == nil)
+        #expect(change.schedule == .daily(times: [t(8), t(19)]))
+        #expect(change.changesSomething)
+    }
+
+    @Test func changingTheNumberOfDosesIsRejected() {
+        let change = check(SampleData.metformin, ["08:00"])
+        #expect(change.problem != nil)
+        #expect(change.schedule == SampleData.metformin.schedule)
+        #expect(!change.changesSomething)
+    }
+
+    @Test func invalidOrRepeatedTimesAreRejected() {
+        #expect(check(SampleData.metformin, ["8am", "20:00"]).problem != nil)
+        #expect(check(SampleData.metformin, ["08:00", "08:00"]).problem != nil)
+    }
+
+    @Test func everyHoursMustKeepItsInterval() {
+        let medication = Medication(name: "Q8H", strength: nil,
+                                    schedule: .everyHours(interval: 8, firstDose: t(6)))
+        let good = check(medication, ["07:00", "15:00", "23:00"])
+        #expect(good.problem == nil)
+        #expect(good.schedule == .everyHours(interval: 8, firstDose: t(7)))
+        #expect(check(medication, ["07:00", "14:00", "23:00"]).problem != nil)
+    }
+
+    @Test func weeklyKeepsItsDaysAndBedtimeStaysBedtime() {
+        let weekly = Medication(name: "Weekly", strength: nil,
+                                schedule: .weekly(days: [.monday, .thursday], times: [t(9)]))
+        #expect(check(weekly, ["08:00"]).schedule == .weekly(days: [.monday, .thursday], times: [t(8)]))
+        #expect(check(SampleData.atorvastatin, ["22:30"]).schedule == .atBedtime(t(22, 30)))
+    }
+
+    @Test func withFoodIsNotAddedOverAnEmptyStomachRule() {
+        let fasting = Medication(name: "Levothyroxine", strength: nil,
+                                 schedule: .daily(times: [t(6)]), foodRules: [.emptyStomach])
+        #expect(!check(fasting, ["06:30"], withFood: true).addsWithFood)
+        #expect(check(SampleData.lisinopril, ["08:00"], withFood: true).addsWithFood)
+        // Already with food: nothing to add.
+        #expect(!check(SampleData.vitaminD, ["12:30"], withFood: true).addsWithFood)
+    }
+
+    @Test func withFoodDoseAwayFromMealsGetsANote() {
+        #expect(check(SampleData.vitaminD, ["15:00"]).notes.count == 1)
+        #expect(check(SampleData.vitaminD, ["12:30"]).notes.isEmpty)
+    }
+
+    @Test func missingSuggestionKeepsCurrentTimes() {
+        let suggestion = ScheduleSuggestion(summary: "", medications: [], warnings: [])
+        let proposal = ScheduleOptimizer.proposal(
+            from: suggestion, keyed: ScheduleOptimizer.keyed([SampleData.lisinopril]), mealTimes: .standard
+        )
+        #expect(proposal.changes.first?.problem != nil)
+        #expect(!proposal.hasChanges)
+    }
+
+    @Test func sampleProposalReducesDoseTimes() {
+        let proposal = SampleData.scheduleProposal
+        #expect(proposal.distinctTimesBefore == 6)
+        #expect(proposal.distinctTimesAfter == 4)
+        #expect(proposal.changes.allSatisfy { $0.problem == nil })
+        // As-needed albuterol isn't part of the schedule; the warning names amoxicillin.
+        #expect(!proposal.changes.contains { $0.medication.id == SampleData.albuterol.id })
+        #expect(proposal.warnings.first?.medicationNames == [SampleData.amoxicillin.name])
+    }
+
+    @Test func applyingUpdatesSchedulesAndFoodRules() {
+        let store = HealthStore(medications: [SampleData.lisinopril, SampleData.metformin])
+        let suggestion = ScheduleSuggestion(
+            summary: "",
+            medications: [
+                .init(key: "m1", times: ["08:00"], takeWithFood: true, reason: ""),
+                .init(key: "m2", times: ["08:00", "19:00"], takeWithFood: false, reason: ""),
+            ],
+            warnings: []
+        )
+        let proposal = ScheduleOptimizer.proposal(
+            from: suggestion, keyed: ScheduleOptimizer.keyed(store.medications), mealTimes: .standard
+        )
+        store.applyChanges(of: proposal)
+        #expect(store.medications[0].foodRules.contains(.withFood))
+        #expect(store.medications[1].times == [t(8), t(19)])
+    }
+}
+
+@MainActor
+struct MedicationEditingTests {
+    @Test func medicationsCanBeAddedUpdatedAndDeleted() {
+        let store = HealthStore(medications: [SampleData.lisinopril])
+        store.addMedication(SampleData.metformin)
+        #expect(store.medications.count == 2)
+
+        var edited = SampleData.metformin
+        edited.quantity = 2
+        store.updateMedication(edited)
+        #expect(store.medications[1].quantity == 2)
+
+        store.logDose(MedicationLog(medicationID: SampleData.metformin.id, scheduledTime: nil,
+                                    quantityTaken: 1, status: .extra))
+        #expect(store.logCount(for: SampleData.metformin.id) == 1)
+        store.deleteMedication(id: SampleData.metformin.id)
+        #expect(store.medications.map(\.id) == [SampleData.lisinopril.id])
+        #expect(store.medicationLogs.isEmpty)
+    }
+
+    @Test func mealTimesAreSaved() {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "Meal Times Tests \(UUID().uuidString)")
+        let persistence = HealthPersistence(fileURL: directory.appending(path: "HealthData.json"))
+        let store = HealthStore(persistence: persistence)
+        #expect(store.mealTimes == .standard)
+        store.mealTimes.dinner = TimeOfDay(hour: 18, minute: 15)
+
+        let reopened = HealthStore(persistence: persistence)
+        #expect(reopened.mealTimes.dinner == TimeOfDay(hour: 18, minute: 15))
+    }
+
+    @Test func mealMatchingUsesATolerance() {
+        let meals = MealTimes.standard
+        #expect(meals.meal(near: TimeOfDay(hour: 8, minute: 20)) == "breakfast")
+        #expect(meals.meal(near: TimeOfDay(hour: 10, minute: 0)) == nil)
+    }
+}

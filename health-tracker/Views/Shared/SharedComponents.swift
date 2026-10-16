@@ -141,12 +141,13 @@ struct SeverityBadge: View {
 /// Centered green Save button pinned to the bottom of the logging dialogs.
 /// (The dialogs have no Cancel button: tap outside the sheet or swipe it down to dismiss.)
 struct DialogSaveButton: View {
+    var title: LocalizedStringKey = "Save"
     let isEnabled: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Text("Save")
+            Text(title)
                 .font(.headline)
                 .frame(maxWidth: 240)
                 .padding(.vertical, 6)

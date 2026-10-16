@@ -15,6 +15,9 @@ struct ContentView: View {
             Tab("Today", systemImage: "heart.text.clipboard") {
                 TodayTimelineView()
             }
+            Tab("Medications", systemImage: "pills") {
+                MedicationsView()
+            }
             Tab("Reminders", systemImage: "bell") {
                 RemindersCardView()
             }

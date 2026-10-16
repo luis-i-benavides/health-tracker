@@ -212,11 +212,14 @@ struct TodayTimelineView: View {
             }
             .navigationTitle("Timeline")
             .toolbar {
-                // Pick a symptom from the dropdown, then fill in the details.
-                Menu("Log Symptom", systemImage: "stethoscope") {
-                    ForEach(SymptomType.allCases) { type in
-                        Button(type.label, systemImage: type.symbol) {
-                            symptomToLog = type
+                // Log an extra dose, or a scheduled dose taken at a different time.
+                Menu("Log Medication", systemImage: "pill.fill") {
+                    if store.medications.isEmpty {
+                        Text("Import your medications first")
+                    }
+                    ForEach(store.medications) { med in
+                        Button("\(med.name) (\(formatter.doseText(for: med)))", systemImage: "pills") {
+                            extraDoseMedication = med
                         }
                     }
                 }
@@ -228,14 +231,11 @@ struct TodayTimelineView: View {
                         }
                     }
                 }
-                // Log an extra dose, or a scheduled dose taken at a different time.
-                Menu("Log Medication", systemImage: "pill.fill") {
-                    if store.medications.isEmpty {
-                        Text("Import your medications first")
-                    }
-                    ForEach(store.medications) { med in
-                        Button("\(med.name) (\(formatter.doseText(for: med)))", systemImage: "pills") {
-                            extraDoseMedication = med
+                // Pick a symptom from the dropdown, then fill in the details.
+                Menu("Log Symptom", systemImage: "stethoscope") {
+                    ForEach(SymptomType.allCases) { type in
+                        Button(type.label, systemImage: type.symbol) {
+                            symptomToLog = type
                         }
                     }
                 }

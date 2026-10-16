@@ -25,6 +25,8 @@ struct HealthSnapshot: Codable, Equatable {
     var measurementLogs: [MeasurementLog]
     var measurementReminders: [MeasurementReminder]
     var medicationRemindersEnabled: Bool
+    /// Added after version 1 shipped; `nil` in older files.
+    var mealTimes: MealTimes?
 }
 
 struct HealthPersistence {

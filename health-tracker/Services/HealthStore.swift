@@ -44,6 +44,7 @@ final class HealthStore {
     var measurementLogs: [MeasurementLog] { didSet { save() } }
     var measurementReminders: [MeasurementReminder] { didSet { save() } }
     var medicationRemindersEnabled = true { didSet { save() } }
+    var mealTimes = MealTimes.standard { didSet { save() } }
 
     /// The most recent problem writing data to disk, if any.
     private(set) var lastSaveError: String?
@@ -91,6 +92,7 @@ final class HealthStore {
                 ?? MeasurementReminder(kind: kind, times: [TimeOfDay(hour: 8, minute: 0)], isEnabled: false)
         }
         self.medicationRemindersEnabled = saved?.medicationRemindersEnabled ?? true
+        self.mealTimes = saved?.mealTimes ?? .standard
         self.persistence = persistence
     }
 
@@ -102,7 +104,8 @@ final class HealthStore {
             symptomLogs: symptomLogs,
             measurementLogs: measurementLogs,
             measurementReminders: measurementReminders,
-            medicationRemindersEnabled: medicationRemindersEnabled
+            medicationRemindersEnabled: medicationRemindersEnabled,
+            mealTimes: mealTimes
         )
     }
 
@@ -239,6 +242,30 @@ final class HealthStore {
 
     func deleteMeasurement(id: MeasurementLog.ID) {
         measurementLogs.removeAll { $0.id == id }
+    }
+
+    // MARK: - Medications
+
+    // Callers reschedule reminders afterwards (`rescheduleNotifications()`).
+
+    func addMedication(_ medication: Medication) {
+        medications.append(medication)
+    }
+
+    func updateMedication(_ medication: Medication) {
+        guard let index = medications.firstIndex(where: { $0.id == medication.id }) else { return }
+        medications[index] = medication
+    }
+
+    /// Removes the medication and its logged doses, which would otherwise be orphaned.
+    func deleteMedication(id: Medication.ID) {
+        medications.removeAll { $0.id == id }
+        medicationLogs.removeAll { $0.medicationID == id }
+    }
+
+    /// Logged doses of a medication, e.g. to warn before deleting it.
+    func logCount(for id: Medication.ID) -> Int {
+        medicationLogs.count { $0.medicationID == id }
     }
 
     // MARK: - Import
