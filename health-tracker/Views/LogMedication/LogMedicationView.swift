@@ -14,8 +14,10 @@ struct LogMedicationView: View {
 
     /// The day being logged for (today, or a past day chosen on the timeline).
     let day: Date
-    /// Opened from a specific scheduled dose: the medication and slot are fixed.
+    /// Opened from a specific scheduled dose, or editing a logged one: the medication and slot are fixed.
     private let isForScheduledDose: Bool
+    /// The logged dose being edited; `nil` when logging a new dose.
+    private let editing: MedicationLog?
 
     @State private var medicationID: Medication.ID?
     /// The scheduled slot this dose satisfies; `nil` means an extra, unscheduled dose.
@@ -34,11 +36,27 @@ struct LogMedicationView: View {
     init(medication: Medication? = nil, scheduledTime: TimeOfDay? = nil, day: Date = .now) {
         self.day = day
         isForScheduledDose = scheduledTime != nil
+        editing = nil
         _medicationID = State(initialValue: medication?.id)
         _scheduledTime = State(initialValue: scheduledTime)
         _status = State(initialValue: scheduledTime == nil ? .extra : .taken)
         _quantity = State(initialValue: medication?.quantity ?? 1)
         _takenAt = State(initialValue: .defaultLogTime(on: day, scheduled: scheduledTime))
+    }
+
+    /// Edits a logged dose, prefilled with what was recorded.
+    init(editing log: MedicationLog) {
+        day = log.scheduledDay
+        isForScheduledDose = true
+        editing = log
+        _medicationID = State(initialValue: log.medicationID)
+        _scheduledTime = State(initialValue: log.scheduledTime)
+        _status = State(initialValue: log.status)
+        _quantity = State(initialValue: log.status == .skipped ? 1 : log.quantityTaken)
+        _takenAt = State(initialValue: log.takenAt)
+        // Keep the recorded time unless the user changes it.
+        _takenAtEdited = State(initialValue: true)
+        _note = State(initialValue: log.note)
     }
 
     private var medication: Medication? {
@@ -70,8 +88,20 @@ struct LogMedicationView: View {
                     TextField("Side effects, reason for skipping…", text: $note, axis: .vertical)
                         .lineLimit(2...5)
                 }
+
+                if let editing {
+                    DeleteEntrySection(
+                        entryName: "Dose",
+                        message: editing.scheduledTime == nil
+                            ? "This can't be undone."
+                            : "The scheduled dose will show as not logged again. This can't be undone."
+                    ) {
+                        store.deleteDose(id: editing.id)
+                        dismiss()
+                    }
+                }
             }
-            .navigationTitle("Log Medication")
+            .navigationTitle(editing == nil ? "Log Medication" : "Edit Dose")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
                 DialogSaveButton(isEnabled: canSave, action: attemptSave)
@@ -91,6 +121,10 @@ struct LogMedicationView: View {
                 if medicationID == nil, let first = store.medications.first {
                     medicationID = first.id
                     quantity = first.quantity
+                }
+                // Editing a skipped dose: offer the prescribed amount if it's changed to taken.
+                if editing?.status == .skipped, let medication {
+                    quantity = medication.quantity
                 }
             }
             .onChange(of: medicationID) {
@@ -153,7 +187,7 @@ struct LogMedicationView: View {
 
     private func asNeededSection(for medication: Medication) -> some View {
         Section("As needed") {
-            if let limits = store.asNeededStatus(for: medication, at: effectiveTakenAt) {
+            if let limits = store.asNeededStatus(for: medication, at: effectiveTakenAt, excluding: editing?.id) {
                 let isAtMax = limits.remainingDoses == 0
                 Label(formatter.statusText(limits), systemImage: isAtMax ? "exclamationmark.triangle.fill" : "clock")
                     .foregroundStyle(isAtMax ? .orange : .primary)
@@ -192,9 +226,15 @@ struct LogMedicationView: View {
     /// Saves, or first asks for confirmation when an as-needed limit would be exceeded.
     private func attemptSave() {
         guard let medication else { return }
-        let warnings = status == .skipped ? [] : store.asNeededWarnings(forDoseOf: medication, at: effectiveTakenAt)
+        // When editing, the dose itself isn't counted against the limits.
+        let warnings = status == .skipped
+            ? []
+            : store.asNeededWarnings(forDoseOf: medication, at: effectiveTakenAt, excluding: editing?.id)
         if warnings.isEmpty {
             save(confirmedOverLimit: false)
+        } else if editing?.confirmedOverLimit == true {
+            // Already confirmed when it was logged; don't ask again for an edit.
+            save(confirmedOverLimit: true)
         } else {
             pendingWarnings = warnings
         }
@@ -202,7 +242,8 @@ struct LogMedicationView: View {
 
     private func save(confirmedOverLimit: Bool) {
         guard let medication else { return }
-        store.logDose(MedicationLog(
+        let log = MedicationLog(
+            id: editing?.id ?? UUID(),
             medicationID: medication.id,
             scheduledTime: scheduledTime,
             scheduledDay: day,
@@ -211,7 +252,12 @@ struct LogMedicationView: View {
             status: status,
             note: note,
             confirmedOverLimit: confirmedOverLimit
-        ))
+        )
+        if editing == nil {
+            store.logDose(log)
+        } else {
+            store.updateDose(log)
+        }
         dismiss()
     }
 }
@@ -223,6 +269,11 @@ struct LogMedicationView: View {
 
 #Preview("Log Medication – Extra Dose") {
     LogMedicationView(medication: SampleData.vitaminD)
+        .environment(HealthStore.preview)
+}
+
+#Preview("Edit Dose") {
+    LogMedicationView(editing: SampleData.medicationLogs[1])
         .environment(HealthStore.preview)
 }
 

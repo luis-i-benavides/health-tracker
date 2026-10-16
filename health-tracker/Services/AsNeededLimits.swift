@@ -83,11 +83,23 @@ enum AsNeededLimits {
 }
 
 extension HealthStore {
-    func asNeededStatus(for medication: Medication, at time: Date = .now) -> AsNeededStatus? {
-        AsNeededLimits.status(for: medication, logs: medicationLogs, at: time)
+    /// - Parameter excluding: a log being edited, so it isn't counted against itself.
+    func asNeededStatus(
+        for medication: Medication,
+        at time: Date = .now,
+        excluding excludedID: MedicationLog.ID? = nil
+    ) -> AsNeededStatus? {
+        let logs = medicationLogs.filter { $0.id != excludedID }
+        return AsNeededLimits.status(for: medication, logs: logs, at: time)
     }
 
-    func asNeededWarnings(forDoseOf medication: Medication, at time: Date = .now) -> [AsNeededWarning] {
-        AsNeededLimits.warnings(forDoseOf: medication, logs: medicationLogs, at: time)
+    /// - Parameter excluding: a log being edited, so it isn't counted against itself.
+    func asNeededWarnings(
+        forDoseOf medication: Medication,
+        at time: Date = .now,
+        excluding excludedID: MedicationLog.ID? = nil
+    ) -> [AsNeededWarning] {
+        let logs = medicationLogs.filter { $0.id != excludedID }
+        return AsNeededLimits.warnings(forDoseOf: medication, logs: logs, at: time)
     }
 }

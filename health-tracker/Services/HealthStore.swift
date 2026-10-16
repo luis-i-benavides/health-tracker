@@ -209,6 +209,38 @@ final class HealthStore {
         measurementLogs.append(log)
     }
 
+    // MARK: - Editing
+
+    // Updates replace the entry with the same id (keeping its place); deletes remove it.
+    // Deleting a dose or reading tied to a scheduled slot returns that slot to due/missed.
+
+    func updateDose(_ log: MedicationLog) {
+        guard let index = medicationLogs.firstIndex(where: { $0.id == log.id }) else { return }
+        medicationLogs[index] = log
+    }
+
+    func deleteDose(id: MedicationLog.ID) {
+        medicationLogs.removeAll { $0.id == id }
+    }
+
+    func updateSymptom(_ log: SymptomLog) {
+        guard let index = symptomLogs.firstIndex(where: { $0.id == log.id }) else { return }
+        symptomLogs[index] = log
+    }
+
+    func deleteSymptom(id: SymptomLog.ID) {
+        symptomLogs.removeAll { $0.id == id }
+    }
+
+    func updateMeasurement(_ log: MeasurementLog) {
+        guard let index = measurementLogs.firstIndex(where: { $0.id == log.id }) else { return }
+        measurementLogs[index] = log
+    }
+
+    func deleteMeasurement(id: MeasurementLog.ID) {
+        measurementLogs.removeAll { $0.id == id }
+    }
+
     // MARK: - Import
 
     /// Reads a user-selected CSV file and returns the parse result without applying it.

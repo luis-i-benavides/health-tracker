@@ -22,11 +22,36 @@ struct LogSymptomView: View {
     /// Whether the user changed the time; until then a symptom for today is logged at Save time.
     @State private var dateEdited = false
     @State private var note = ""
+    /// The symptom being edited; `nil` when logging a new one.
+    private let editing: SymptomLog?
 
     init(type: SymptomType = .headache, day: Date = .now) {
         self.day = day
+        editing = nil
         _type = State(initialValue: type)
         _date = State(initialValue: .defaultLogTime(on: day, scheduled: nil))
+    }
+
+    /// Edits a logged symptom, prefilled with what was recorded.
+    init(editing log: SymptomLog) {
+        day = log.date
+        editing = log
+        _type = State(initialValue: log.type)
+        _customName = State(initialValue: log.customName)
+        // Only the severity is stored, so start the slider in the middle of its range.
+        _score = State(initialValue: Self.score(for: log.severity))
+        _date = State(initialValue: log.date)
+        // Keep the recorded time unless the user changes it.
+        _dateEdited = State(initialValue: true)
+        _note = State(initialValue: log.note)
+    }
+
+    private static func score(for severity: Severity) -> Double {
+        switch severity {
+        case .mild: 2
+        case .moderate: 5
+        case .severe: 8
+        }
     }
 
     private var severity: Severity { Severity(score: Int(score)) }
@@ -83,8 +108,15 @@ struct LogSymptomView: View {
                     TextField("Triggers, duration, what helped…", text: $note, axis: .vertical)
                         .lineLimit(2...5)
                 }
+
+                if let editing {
+                    DeleteEntrySection(entryName: "Symptom") {
+                        store.deleteSymptom(id: editing.id)
+                        dismiss()
+                    }
+                }
             }
-            .navigationTitle("Log Symptom")
+            .navigationTitle(editing == nil ? "Log Symptom" : "Edit Symptom")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
                 DialogSaveButton(isEnabled: canSave, action: save)
@@ -95,15 +127,26 @@ struct LogSymptomView: View {
     }
 
     private func save() {
-        store.logSymptom(SymptomLog(
+        let log = SymptomLog(
+            id: editing?.id ?? UUID(),
             type: type,
-            customName: customName.trimmingCharacters(in: .whitespaces),
+            customName: type == .other ? customName.trimmingCharacters(in: .whitespaces) : "",
             severity: severity,
             date: .logTime(chosen: date, edited: dateEdited, day: day),
             note: note
-        ))
+        )
+        if editing == nil {
+            store.logSymptom(log)
+        } else {
+            store.updateSymptom(log)
+        }
         dismiss()
     }
+}
+
+#Preview("Edit Symptom") {
+    LogSymptomView(editing: SampleData.symptomLogs[0])
+        .environment(HealthStore.preview)
 }
 
 #Preview("Log Symptom – Dialog") {

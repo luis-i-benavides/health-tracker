@@ -2,16 +2,33 @@
 //  DoseDetailView.swift
 //  health-tracker
 //
-//  Read-only details of a logged dose: schedule vs. actual time, amount, status and note.
+//  Details of a logged dose: schedule vs. actual time, amount, status and note,
+//  with Edit and Delete.
 //
 
 import SwiftUI
 
 struct DoseDetailView: View {
+    @Environment(HealthStore.self) private var store
     @Environment(\.dismiss) private var dismiss
 
     let medication: Medication
-    let log: MedicationLog
+    /// The dose as it was when opened; `log` shows the latest version after edits.
+    private let initialLog: MedicationLog
+    @State private var isEditing = false
+
+    init(medication: Medication, log: MedicationLog) {
+        self.medication = medication
+        initialLog = log
+    }
+
+    private var log: MedicationLog {
+        store.medicationLogs.first { $0.id == initialLog.id } ?? initialLog
+    }
+
+    private var isDeleted: Bool {
+        !store.medicationLogs.contains { $0.id == initialLog.id }
+    }
 
     private let formatter = PrescriptionFormatter()
 
@@ -83,13 +100,32 @@ struct DoseDetailView: View {
                         Text(log.note)
                     }
                 }
+
+                DeleteEntrySection(
+                    entryName: "Dose",
+                    message: log.scheduledTime == nil
+                        ? "This can't be undone."
+                        : "The scheduled dose will show as not logged again. This can't be undone."
+                ) {
+                    store.deleteDose(id: log.id)
+                }
             }
             .navigationTitle("Dose Details")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Edit") { isEditing = true }
+                }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", role: .confirm) { dismiss() }
                 }
+            }
+            .sheet(isPresented: $isEditing) {
+                LogMedicationView(editing: log)
+            }
+            // Deleted here or from the Edit sheet: nothing left to show.
+            .onChange(of: isDeleted) {
+                if isDeleted { dismiss() }
             }
         }
         .presentationDetents([.medium, .large])

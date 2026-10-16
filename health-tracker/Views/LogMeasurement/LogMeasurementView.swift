@@ -23,14 +23,33 @@ struct LogMeasurementView: View {
     /// Whether the user changed the time; until then a reading for today is logged at Save time.
     @State private var takenAtEdited = false
     @State private var note = ""
+    /// The reading being edited; `nil` when recording a new one.
+    private let editing: MeasurementLog?
 
     init(kind: MeasurementKind, scheduledTime: TimeOfDay? = nil, day: Date = .now) {
         self.scheduledTime = scheduledTime
         self.day = day
+        editing = nil
         _takenAt = State(initialValue: .defaultLogTime(on: day, scheduled: scheduledTime))
         _kind = State(initialValue: kind)
         _values = State(initialValue: Array(repeating: nil, count: kind.fields.count))
     }
+
+    /// Edits a recorded reading, prefilled with its values.
+    init(editing log: MeasurementLog) {
+        scheduledTime = log.scheduledTime
+        day = log.scheduledDay
+        editing = log
+        _takenAt = State(initialValue: log.takenAt)
+        // Keep the recorded time unless the user changes it.
+        _takenAtEdited = State(initialValue: true)
+        _kind = State(initialValue: log.kind)
+        _values = State(initialValue: log.values.map(Optional.some))
+        _note = State(initialValue: log.note)
+    }
+
+    /// The type can be changed only for a new, unscheduled reading.
+    private var isKindFixed: Bool { scheduledTime != nil || editing != nil }
 
     private var fields: [MeasurementField] { kind.fields }
 
@@ -52,7 +71,7 @@ struct LogMeasurementView: View {
         NavigationStack {
             Form {
                 Section {
-                    if scheduledTime == nil {
+                    if !isKindFixed {
                         Picker("Measurement", selection: $kind) {
                             ForEach(MeasurementKind.allCases) { kind in
                                 Label(kind.label, systemImage: kind.symbol).tag(kind)
@@ -109,8 +128,20 @@ struct LogMeasurementView: View {
                     TextField("Position, arm used, how you felt…", text: $note, axis: .vertical)
                         .lineLimit(2...5)
                 }
+
+                if let editing {
+                    DeleteEntrySection(
+                        entryName: "Reading",
+                        message: editing.scheduledTime == nil
+                            ? "This can't be undone."
+                            : "The reminder will show as not recorded again. This can't be undone."
+                    ) {
+                        store.deleteMeasurement(id: editing.id)
+                        dismiss()
+                    }
+                }
             }
-            .navigationTitle("Record Reading")
+            .navigationTitle(editing == nil ? "Record Reading" : "Edit Reading")
             .navigationBarTitleDisplayMode(.inline)
             .safeAreaInset(edge: .bottom) {
                 DialogSaveButton(isEnabled: canSave, action: save)
@@ -135,17 +166,29 @@ struct LogMeasurementView: View {
     }
 
     private func save() {
-        store.logMeasurement(MeasurementLog(
+        let log = MeasurementLog(
+            id: editing?.id ?? UUID(),
             kind: kind,
             values: values.compactMap { $0 },
-            unit: fields.first?.unit ?? "",
+            // An edited reading keeps the unit it was recorded in.
+            unit: editing?.unit ?? fields.first?.unit ?? "",
             scheduledTime: scheduledTime,
             scheduledDay: day,
             takenAt: .logTime(chosen: takenAt, edited: takenAtEdited, day: day),
             note: note
-        ))
+        )
+        if editing == nil {
+            store.logMeasurement(log)
+        } else {
+            store.updateMeasurement(log)
+        }
         dismiss()
     }
+}
+
+#Preview("Edit Reading") {
+    LogMeasurementView(editing: SampleData.measurementLogs[0])
+        .environment(HealthStore.preview)
 }
 
 #Preview("Record Measurement – Blood Pressure") {

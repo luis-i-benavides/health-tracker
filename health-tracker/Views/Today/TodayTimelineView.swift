@@ -77,6 +77,30 @@ private struct MeasurementRequest: Identifiable {
     var id: String { "\(kind.rawValue)-\(scheduledTime?.id ?? -1)" }
 }
 
+/// A logged entry the user asked to delete from the timeline, awaiting confirmation.
+private enum PendingDeletion {
+    case dose(MedicationLog)
+    case measurement(MeasurementLog)
+    case symptom(SymptomLog)
+
+    var entryName: String {
+        switch self {
+        case .dose: "Dose"
+        case .measurement: "Reading"
+        case .symptom: "Symptom"
+        }
+    }
+
+    /// Whether removing it returns a scheduled slot to due/missed.
+    var isScheduled: Bool {
+        switch self {
+        case .dose(let log): log.scheduledTime != nil
+        case .measurement(let log): log.scheduledTime != nil
+        case .symptom: false
+        }
+    }
+}
+
 struct TodayTimelineView: View {
     @Environment(HealthStore.self) private var store
 
@@ -85,6 +109,10 @@ struct TodayTimelineView: View {
     @State private var doseToShow: MedicationLog?
     @State private var measurementToRecord: MeasurementRequest?
     @State private var symptomToLog: SymptomType?
+    @State private var doseToEdit: MedicationLog?
+    @State private var measurementToEdit: MeasurementLog?
+    @State private var symptomToEdit: SymptomLog?
+    @State private var pendingDeletion: PendingDeletion?
     /// The day being shown; today by default, can go back to earlier days.
     @State private var selectedDay: Date
     /// Updated every minute so the "now" line and due/overdue labels stay current.
@@ -229,6 +257,30 @@ struct TodayTimelineView: View {
             .sheet(item: $symptomToLog) { type in
                 LogSymptomView(type: type, day: selectedDay)
             }
+            .sheet(item: $doseToEdit) { log in
+                LogMedicationView(editing: log)
+            }
+            .sheet(item: $measurementToEdit) { log in
+                LogMeasurementView(editing: log)
+            }
+            .sheet(item: $symptomToEdit) { log in
+                LogSymptomView(editing: log)
+            }
+            .confirmationDialog(
+                "Delete this \(pendingDeletion?.entryName.lowercased() ?? "entry")?",
+                isPresented: Binding(
+                    get: { pendingDeletion != nil },
+                    set: { if !$0 { pendingDeletion = nil } }
+                ),
+                titleVisibility: .visible,
+                presenting: pendingDeletion
+            ) { deletion in
+                Button("Delete \(deletion.entryName)", role: .destructive) { delete(deletion) }
+            } message: { deletion in
+                Text(deletion.isScheduled
+                     ? "It will show as not logged again. This can't be undone."
+                     : "This can't be undone.")
+            }
         }
     }
 
@@ -302,6 +354,7 @@ struct TodayTimelineView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Shows dose details")
+                .editMenu(edit: { doseToEdit = log }, delete: { pendingDeletion = .dose(log) })
             } else {
                 timelineRow(
                     date: entry.date,
@@ -327,12 +380,10 @@ struct TodayTimelineView: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("Shows dose details")
+            .editMenu(edit: { doseToEdit = log }, delete: { pendingDeletion = .dose(log) })
         case .measurement(let slot):
             if let log = slot.log {
-                timelineRow(
-                    date: entry.date, icon: slot.kind.symbol, color: slot.kind.color,
-                    title: slot.kind.label, subtitle: measurementSubtitle(log), isPast: isPast
-                ) { EmptyView() }
+                loggedMeasurementRow(log, date: entry.date, isPast: isPast)
             } else {
                 timelineRow(
                     date: entry.date, icon: slot.kind.symbol, color: slot.kind.color,
@@ -346,16 +397,40 @@ struct TodayTimelineView: View {
                 }
             }
         case .extraMeasurement(let log):
-            timelineRow(
-                date: entry.date, icon: log.kind.symbol, color: log.kind.color,
-                title: log.kind.label, subtitle: measurementSubtitle(log), isPast: isPast
-            ) { EmptyView() }
+            loggedMeasurementRow(log, date: entry.date, isPast: isPast)
         case .symptom(let log):
+            // Tap to edit.
+            Button { symptomToEdit = log } label: {
+                timelineRow(
+                    date: entry.date, icon: log.type.symbol, color: log.severity.color,
+                    title: log.displayName, subtitle: log.note.isEmpty ? log.severity.label : log.note,
+                    isPast: isPast
+                ) { SeverityBadge(severity: log.severity) }
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Edits this symptom")
+            .editMenu(edit: { symptomToEdit = log }, delete: { pendingDeletion = .symptom(log) })
+        }
+    }
+
+    /// A recorded reading; tap to edit.
+    private func loggedMeasurementRow(_ log: MeasurementLog, date: Date, isPast: Bool) -> some View {
+        Button { measurementToEdit = log } label: {
             timelineRow(
-                date: entry.date, icon: log.type.symbol, color: log.severity.color,
-                title: log.displayName, subtitle: log.note.isEmpty ? log.severity.label : log.note,
-                isPast: isPast
-            ) { SeverityBadge(severity: log.severity) }
+                date: date, icon: log.kind.symbol, color: log.kind.color,
+                title: log.kind.label, subtitle: measurementSubtitle(log), isPast: isPast
+            ) { detailChevron }
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Edits this reading")
+        .editMenu(edit: { measurementToEdit = log }, delete: { pendingDeletion = .measurement(log) })
+    }
+
+    private func delete(_ deletion: PendingDeletion) {
+        switch deletion {
+        case .dose(let log): store.deleteDose(id: log.id)
+        case .measurement(let log): store.deleteMeasurement(id: log.id)
+        case .symptom(let log): store.deleteSymptom(id: log.id)
         }
     }
 
@@ -435,6 +510,16 @@ struct TodayTimelineView: View {
         // Makes the whole row tappable when wrapped in a Button.
         .contentShape(.rect)
         .opacity(isPast ? 0.7 : 1)
+    }
+}
+
+private extension View {
+    /// Long-press menu with Edit and Delete for a logged timeline entry.
+    func editMenu(edit: @escaping () -> Void, delete: @escaping () -> Void) -> some View {
+        contextMenu {
+            Button("Edit", systemImage: "pencil", action: edit)
+            Button("Delete", systemImage: "trash", role: .destructive, action: delete)
+        }
     }
 }
 

@@ -160,6 +160,34 @@ struct DialogSaveButton: View {
     }
 }
 
+/// Form section with a Delete button for edit dialogs; asks for confirmation first.
+struct DeleteEntrySection: View {
+    /// e.g. "Dose", "Reading", "Symptom".
+    let entryName: String
+    /// Extra detail for the confirmation, e.g. what happens to a scheduled slot.
+    var message: String = "This can't be undone."
+    let onDelete: () -> Void
+
+    @State private var isConfirming = false
+
+    var body: some View {
+        Section {
+            Button("Delete \(entryName)", systemImage: "trash", role: .destructive) {
+                isConfirming = true
+            }
+            // Otherwise the icon takes the accent color while the title is red.
+            .foregroundStyle(.red)
+            .frame(maxWidth: .infinity)
+            .confirmationDialog("Delete this \(entryName.lowercased())?", isPresented: $isConfirming,
+                                titleVisibility: .visible) {
+                Button("Delete \(entryName)", role: .destructive, action: onDelete)
+            } message: {
+                Text(message)
+            }
+        }
+    }
+}
+
 /// The expected CSV layout, shown on import screens.
 struct CSVFormatHelp: View {
     var body: some View {
