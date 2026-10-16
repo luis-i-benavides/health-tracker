@@ -22,6 +22,8 @@ struct MedicationsView: View {
     private var asNeeded: [Medication] { store.medications.filter(\.schedule.isAsNeeded) }
 
     var body: some View {
+        @Bindable var store = store
+
         NavigationStack {
             List {
                 if !store.medications.isEmpty {
@@ -45,6 +47,10 @@ struct MedicationsView: View {
                     } footer: {
                         Text("Claude suggests when to take each dose: fewer times a day, with-food doses at meals, and protection against nausea. You review the changes before anything is updated.")
                     }
+                }
+
+                if !store.medications.isEmpty {
+                    DailyRoutineSection(mealTimes: $store.mealTimes)
                 }
 
                 if !scheduled.isEmpty {

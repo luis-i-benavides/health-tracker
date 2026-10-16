@@ -32,7 +32,7 @@ struct OptimizeScheduleView: View {
                 if let proposal {
                     proposalSections(proposal)
                 } else {
-                    routineSection(mealTimes: $store.mealTimes)
+                    DailyRoutineSection(mealTimes: $store.mealTimes)
                     apiKeySection
                     if let errorMessage {
                         Section {
@@ -61,20 +61,6 @@ struct OptimizeScheduleView: View {
     }
 
     // MARK: - Before asking
-
-    private func routineSection(mealTimes: Binding<MealTimes>) -> some View {
-        Section {
-            DatePicker("Wake up", selection: mealTimes.wake.asDate, displayedComponents: .hourAndMinute)
-            DatePicker("Breakfast", selection: mealTimes.breakfast.asDate, displayedComponents: .hourAndMinute)
-            DatePicker("Lunch", selection: mealTimes.lunch.asDate, displayedComponents: .hourAndMinute)
-            DatePicker("Dinner", selection: mealTimes.dinner.asDate, displayedComponents: .hourAndMinute)
-            DatePicker("Bedtime", selection: mealTimes.bedtime.asDate, displayedComponents: .hourAndMinute)
-        } header: {
-            Text("Your Day")
-        } footer: {
-            Text("With-food doses are lined up with these meals.")
-        }
-    }
 
     @ViewBuilder
     private var apiKeySection: some View {
