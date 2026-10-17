@@ -18,6 +18,8 @@ struct OptimizeScheduleView: View {
     @State private var errorMessage: String?
     @State private var proposal: ScheduleProposal?
     @State private var isApplying = false
+    /// Asking to apply a schedule whose doses break a separation.
+    @State private var isConfirmingViolations = false
 
     /// Preloaded suggestion, for previews.
     init(proposal: ScheduleProposal? = nil) {
@@ -59,6 +61,12 @@ struct OptimizeScheduleView: View {
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isRequesting)
+        .alert("Some Doses Are Too Close", isPresented: $isConfirmingViolations) {
+            Button("Apply Anyway", role: .destructive, action: applyProposal)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Some suggested times break the separations listed under Kept Apart, so one medication may not be absorbed properly. Check with your pharmacist before applying.")
+        }
     }
 
     // MARK: - Before asking
@@ -138,10 +146,66 @@ struct OptimizeScheduleView: View {
             }
         }
 
+        if !proposal.separations.isEmpty {
+            Section {
+                ForEach(proposal.separations) { separation in
+                    separationRow(separation)
+                }
+            } header: {
+                Text("Kept Apart")
+            } footer: {
+                Text("Medications, vitamins and foods that reduce each other's absorption. The app checks each suggested time against these gaps.")
+            }
+        }
+
         Section("Medications") {
             ForEach(proposal.changes) { change in
                 changeRow(change)
             }
+        }
+    }
+
+    private func separationRow(_ separation: ProposalSeparation) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Label {
+                Text("\(separation.affectedName.sentenceCased) and \(separation.blockerName)")
+                    .font(.headline)
+            } icon: {
+                Image(systemName: separation.isSatisfied ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                    .foregroundStyle(separation.isSatisfied ? .green : .red)
+            }
+            Text(gapText(separation))
+                .font(.subheadline)
+            if !separation.reason.isEmpty {
+                Text(separation.reason)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(separation.violations, id: \.self) { violation in
+                Text(violation)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
+            }
+            if let unchecked = separation.uncheckedReason {
+                Text(unchecked)
+                    .font(.footnote)
+                    .foregroundStyle(.orange)
+            }
+        }
+        .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// e.g. "Take vitamin D at least 1 h before or 4 h after cholestyramine."
+    private func gapText(_ separation: ProposalSeparation) -> String {
+        func hours(_ value: Double) -> String { "\(value.formatted()) h" }
+        let affected = separation.affectedName
+        let blocker = separation.blockerName
+        switch (separation.hoursBefore > 0, separation.hoursAfter > 0) {
+        case (true, true): return "\(affected.sentenceCased) at least \(hours(separation.hoursBefore)) before or \(hours(separation.hoursAfter)) after \(blocker)."
+        case (true, false): return "\(affected.sentenceCased) at least \(hours(separation.hoursBefore)) before \(blocker)."
+        case (false, true): return "\(affected.sentenceCased) at least \(hours(separation.hoursAfter)) after \(blocker)."
+        case (false, false): return "\(affected.sentenceCased) can be taken with \(blocker)."
         }
     }
 
@@ -196,10 +260,10 @@ struct OptimizeScheduleView: View {
             DialogSaveButton(title: proposal.hasChanges ? "Apply Schedule" : "Done",
                              isEnabled: !isApplying) {
                 guard proposal.hasChanges else { dismiss(); return }
-                isApplying = true
-                Task {
-                    await store.apply(proposal)
-                    dismiss()
+                if proposal.hasSeparationViolations {
+                    isConfirmingViolations = true
+                } else {
+                    applyProposal()
                 }
             }
         } else if isRequesting {
@@ -217,6 +281,15 @@ struct OptimizeScheduleView: View {
             DialogSaveButton(title: "Suggest Schedule",
                              isEnabled: !apiKey.isEmpty && !isEditingKey && !store.medications.isEmpty,
                              action: requestSuggestion)
+        }
+    }
+
+    private func applyProposal() {
+        guard let proposal else { return }
+        isApplying = true
+        Task {
+            await store.apply(proposal)
+            dismiss()
         }
     }
 
@@ -265,6 +338,11 @@ struct OptimizeScheduleView: View {
 
 #Preview("Optimize – Start") {
     OptimizeScheduleView()
+        .environment(HealthStore.preview)
+}
+
+#Preview("Optimize – Absorption") {
+    OptimizeScheduleView(proposal: SampleData.absorptionProposal)
         .environment(HealthStore.preview)
 }
 

@@ -234,3 +234,53 @@ extension SampleData {
         )
     }
 }
+
+extension SampleData {
+    /// A bile acid sequestrant with two things it blocks, for the "Kept Apart" check.
+    static let colesevelam = Medication(
+        name: "Colesevelam", strength: Strength(value: 625, unit: "mg"), quantity: 3,
+        schedule: .daily(times: [t(8), t(19)]), foodRules: [.withFood], purpose: "cholesterol", addedOn: monthAgo
+    )
+    static let levothyroxine = Medication(
+        name: "Levothyroxine", strength: Strength(value: 0.075, unit: "mg"),
+        schedule: .daily(times: [t(8)]), foodRules: [.emptyStomach, .fullGlassOfWater], purpose: "thyroid", addedOn: monthAgo
+    )
+
+    /// Suggestion where the levothyroxine separation holds but vitamin D was put 30 minutes
+    /// after colesevelam, which the app flags (keys: m1 colesevelam, m2 levothyroxine, m3 vitamin D).
+    static var absorptionProposal: ScheduleProposal {
+        let medications = [colesevelam, levothyroxine, vitaminD]
+        let suggestion = ScheduleSuggestion(
+            summary: "Levothyroxine moves to when you wake up, well before coffee and colesevelam. Colesevelam is taken with lunch and dinner.",
+            medications: [
+                .init(key: "m1", times: ["12:30", "19:00"], takeWithFood: false,
+                      reason: "With lunch and dinner, away from your morning thyroid dose."),
+                .init(key: "m2", times: ["07:00"], takeWithFood: false,
+                      reason: "On an empty stomach when you wake, 30 minutes before coffee and an hour before breakfast."),
+                .init(key: "m3", times: ["13:00"], takeWithFood: false,
+                      reason: "With lunch."),
+            ],
+            warnings: [
+                .init(severity: .caution,
+                      message: "Long-term colesevelam can lower vitamin A, E and K levels as well as vitamin D. Ask your prescriber whether you need a supplement.",
+                      medicationKeys: ["m1"]),
+            ],
+            separations: [
+                .init(blocker: "m1", affected: "m2", hoursBefore: 4, hoursAfter: 4,
+                      reason: "Colesevelam binds levothyroxine in the gut."),
+                .init(blocker: "m1", affected: "m3", hoursBefore: 1, hoursAfter: 4,
+                      reason: "Colesevelam reduces absorption of fat-soluble vitamins."),
+                .init(blocker: "coffee", affected: "m2", hoursBefore: 0.5, hoursAfter: 0,
+                      reason: "Coffee reduces levothyroxine absorption."),
+            ]
+        )
+        var preferences = SchedulePreferences.standard
+        preferences.coffeeTime = TimeOfDay(hour: 7, minute: 30)
+        return ScheduleOptimizer.proposal(
+            from: suggestion,
+            keyed: ScheduleOptimizer.keyed(medications),
+            mealTimes: MealTimes.standard,
+            preferences: preferences
+        )
+    }
+}

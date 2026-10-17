@@ -304,3 +304,98 @@ struct SchedulePreferenceTests {
         #expect(HealthStore(persistence: persistence).schedulePreferences == busy)
     }
 }
+
+@MainActor
+struct AbsorptionSeparationTests {
+    private func t(_ hour: Int, _ minute: Int = 0) -> TimeOfDay { TimeOfDay(hour: hour, minute: minute) }
+
+    private func violations(blocker: [TimeOfDay], affected: [TimeOfDay], before: Double, after: Double) -> Int {
+        ScheduleOptimizer.separationViolations(
+            blockerTimes: blocker, affectedTimes: affected, hoursBefore: before, hoursAfter: after
+        ).count
+    }
+
+    @Test func dosesOutsideTheWindowPass() {
+        // Cholestyramine at 08:00: other drugs 1 h before or 4 h after.
+        #expect(violations(blocker: [t(8)], affected: [t(7)], before: 1, after: 4) == 0)
+        #expect(violations(blocker: [t(8)], affected: [t(12)], before: 1, after: 4) == 0)
+    }
+
+    @Test func dosesInsideTheWindowFail() {
+        #expect(violations(blocker: [t(8)], affected: [t(7, 30)], before: 1, after: 4) == 1)
+        #expect(violations(blocker: [t(8)], affected: [t(11)], before: 1, after: 4) == 1)
+        #expect(violations(blocker: [t(8)], affected: [t(8)], before: 1, after: 4) == 1)
+    }
+
+    @Test func gapsAreMeasuredAcrossMidnight() {
+        // A 23:00 blocker and a 01:00 dose are only 2 hours apart.
+        #expect(violations(blocker: [t(23)], affected: [t(1)], before: 1, after: 4) == 1)
+        #expect(violations(blocker: [t(23)], affected: [t(3)], before: 1, after: 4) == 0)
+    }
+
+    @Test func everyBlockerDoseCounts() {
+        // Fine against the 08:00 dose, but 30 minutes after the 12:30 dose.
+        #expect(violations(blocker: [t(8), t(12, 30)], affected: [t(13)], before: 1, after: 4) == 1)
+        #expect(violations(blocker: [t(12, 30), t(19)], affected: [t(7)], before: 4, after: 4) == 0)
+    }
+
+    @Test func sampleProposalFlagsOnlyTheVitaminD() throws {
+        let proposal = SampleData.absorptionProposal
+        #expect(proposal.separations.count == 3)
+        #expect(proposal.hasSeparationViolations)
+        let vitamin = try #require(proposal.separations.first { $0.affectedName == SampleData.vitaminD.name })
+        #expect(vitamin.violations.count == 1)
+        #expect(proposal.separations.filter(\.isSatisfied).count == 2)
+        // The coffee side resolves to the preference time.
+        #expect(proposal.separations.contains { $0.blockerName == "coffee" && $0.isSatisfied })
+    }
+
+    @Test func foodTargetsAndUncheckableSides() {
+        let keyed = ScheduleOptimizer.keyed([SampleData.levothyroxine, SampleData.albuterol])
+        var preferences = SchedulePreferences.standard
+        preferences.dairyMeals = [.breakfast]
+        let suggestion = ScheduleSuggestion(
+            summary: "",
+            medications: [.init(key: "m1", times: ["07:00"], takeWithFood: false, reason: "")],
+            warnings: [],
+            separations: [
+                .init(blocker: "dairy", affected: "m1", hoursBefore: 1, hoursAfter: 4, reason: ""),
+                .init(blocker: "meals", affected: "m1", hoursBefore: 0.5, hoursAfter: 2, reason: ""),
+                .init(blocker: "coffee", affected: "m1", hoursBefore: 0.5, hoursAfter: 0, reason: ""),
+                .init(blocker: "m2", affected: "m1", hoursBefore: 1, hoursAfter: 1, reason: ""),
+                .init(blocker: "antacids", affected: "m1", hoursBefore: 4, hoursAfter: 4, reason: ""),
+            ]
+        )
+        let proposal = ScheduleOptimizer.proposal(from: suggestion, keyed: keyed,
+                                                  mealTimes: .standard, preferences: preferences)
+        let checks = proposal.separations
+        #expect(checks[0].isSatisfied)                  // dairy at 08:00, dose 1 h before
+        #expect(checks[0].blockerName == "dairy or calcium")
+        #expect(checks[1].isSatisfied)                  // meals 08:00, 12:30, 19:00
+        #expect(checks[2].isSatisfied)                  // no coffee: nothing to check
+        #expect(checks[3].uncheckedReason != nil)       // albuterol is as-needed
+        #expect(checks[4].uncheckedReason != nil)       // not a key or food token
+        #expect(!proposal.hasSeparationViolations)
+    }
+
+    @Test func responseWithSeparationsDecodes() throws {
+        let answer = """
+        {"summary":"","medications":[],"warnings":[],
+         "separations":[{"blocker":"m1","affected":"m2","hoursBefore":1,"hoursAfter":4,"reason":"Binds it."}]}
+        """
+        let json: [String: Any] = ["stop_reason": "end_turn", "content": [["type": "text", "text": answer]]]
+        let suggestion = try ScheduleOptimizer.decodeResponse(try JSONSerialization.data(withJSONObject: json), status: 200)
+        #expect(suggestion.separations == [.init(blocker: "m1", affected: "m2", hoursBefore: 1, hoursAfter: 4, reason: "Binds it.")])
+    }
+
+    @Test func requestAsksForSeparations() throws {
+        let body = ScheduleOptimizer.requestBody(prompt: "")
+        let output = try #require(body["output_config"] as? [String: Any])
+        let format = try #require(output["format"] as? [String: Any])
+        let schema = try #require(format["schema"] as? [String: Any])
+        #expect((schema["required"] as? [String])?.contains("separations") == true)
+        #expect(ScheduleOptimizer.systemPrompt.contains("cholestyramine"))
+        #expect(ScheduleOptimizer.systemPrompt.contains("fat-soluble vitamins"))
+        #expect(ScheduleOptimizer.systemPrompt.contains("vitamins, minerals and supplements"))
+    }
+}

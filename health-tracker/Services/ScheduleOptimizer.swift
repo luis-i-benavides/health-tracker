@@ -34,9 +34,49 @@ struct ScheduleSuggestion: Decodable, Equatable {
         let medicationKeys: [String]
     }
 
+    /// "Keep A and B apart": B must be taken at least `hoursBefore` hours before A, or at
+    /// least `hoursAfter` hours after it. Either side is a medication key or a food token
+    /// (`SeparationTarget`).
+    struct Separation: Decodable, Equatable {
+        /// What reduces absorption, e.g. a bile acid sequestrant.
+        let blocker: String
+        /// What it reduces the absorption of.
+        let affected: String
+        let hoursBefore: Double
+        let hoursAfter: Double
+        let reason: String
+    }
+
     let summary: String
     let medications: [MedicationTimes]
     let warnings: [Warning]
+    var separations: [Separation] = []
+}
+
+extension ScheduleSuggestion {
+    private enum CodingKeys: String, CodingKey {
+        case summary, medications, warnings, separations
+    }
+
+    /// Decodes in an extension so the memberwise initializer stays available. A missing
+    /// `separations` list (the schema requires it) decodes as empty rather than failing.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        summary = try container.decode(String.self, forKey: .summary)
+        medications = try container.decode([MedicationTimes].self, forKey: .medications)
+        warnings = try container.decode([Warning].self, forKey: .warnings)
+        separations = try container.decodeIfPresent([Separation].self, forKey: .separations) ?? []
+    }
+}
+
+/// The food-side targets a separation can name, mapped to the user's routine.
+enum SeparationTarget: String, CaseIterable {
+    /// Every meal (e.g. dietary fat, or "take on an empty stomach").
+    case meals
+    /// The meals the user marked as having dairy or calcium.
+    case dairy
+    /// Morning coffee.
+    case coffee
 }
 
 // MARK: - Checked proposal shown to the user
@@ -64,11 +104,29 @@ struct ScheduleProposal: Hashable {
     let summary: String
     let changes: [ProposedScheduleChange]
     let warnings: [ProposalWarning]
+    let separations: [ProposalSeparation]
     /// Distinct clock times with a scheduled dose, before and after.
     let distinctTimesBefore: Int
     let distinctTimesAfter: Int
 
     var hasChanges: Bool { changes.contains(where: \.changesSomething) }
+    var hasSeparationViolations: Bool { separations.contains { !$0.isSatisfied } }
+}
+
+/// A separation Claude said it applied, checked against the proposed times.
+struct ProposalSeparation: Hashable, Identifiable {
+    let blockerName: String
+    let affectedName: String
+    let hoursBefore: Double
+    let hoursAfter: Double
+    let reason: String
+    /// Dose pairs closer than the separation allows; empty when it holds.
+    let violations: [String]
+    /// Set when the times couldn't be checked (e.g. an as-needed medication).
+    let uncheckedReason: String?
+
+    var id: String { "\(blockerName)|\(affectedName)" }
+    var isSatisfied: Bool { violations.isEmpty }
 }
 
 struct ProposalWarning: Hashable, Identifiable {
@@ -176,9 +234,9 @@ struct ScheduleOptimizer {
     side effects such as nausea, and interactions between drugs on the list.
 
     Goals, in priority order:
-    1. Safety: keep doses that interact apart when timing helps (for example, separate \
-    drugs whose absorption is blocked by calcium, iron or antacids), keep required spacing \
-    between doses of the same drug, and respect "empty stomach" instructions.
+    1. Safety: keep doses that interact apart when timing helps, keep required spacing \
+    between doses of the same drug, and respect "empty stomach" instructions. See \
+    "Absorption" below.
     2. Food: put doses that must be taken with food at a meal. Drugs that commonly cause \
     nausea or stomach upset should be taken with food even when the label doesn't say so — \
     set takeWithFood for those. If the patient has an anti-nausea medication on a fixed \
@@ -193,6 +251,27 @@ struct ScheduleOptimizer {
     example levothyroxine, iron, some antibiotics, bisphosphonates) far enough from them. \
     If a safety or food rule forces a dose into an avoided hour, do it and explain why in \
     a warning.
+
+    Absorption:
+    Check every pair on the list — prescription drugs, over-the-counter drugs, vitamins, \
+    minerals and supplements alike — for one reducing the absorption of another, and check \
+    each drug against food. Examples, not a complete list:
+    - Bile acid sequestrants (cholestyramine, colestipol, colesevelam) bind other drugs and \
+    fat-soluble vitamins (A, D, E, K); other drugs usually go at least 1 hour before or \
+    4–6 hours after them.
+    - Calcium, iron, magnesium, zinc, antacids and sucralfate reduce absorption of \
+    levothyroxine, tetracyclines, fluoroquinolones, bisphosphonates and others.
+    - Orlistat reduces absorption of fat-soluble vitamins.
+    - Levothyroxine and bisphosphonates need an empty stomach, away from food, coffee and \
+    calcium.
+    For every interaction that timing can manage, add an entry to "separations" and choose \
+    times that satisfy it. "blocker" and "affected" are each a medication key, or one of \
+    "meals" (all meals), "dairy" (the patient's dairy or calcium meals) or "coffee". \
+    "affected" must be taken at least hoursBefore hours before "blocker", or at least \
+    hoursAfter hours after it. If a needed vitamin isn't on the list (for example, \
+    fat-soluble vitamins with long-term cholestyramine), say so in a warning. If the \
+    separations can't all be met within waking hours, choose the safest arrangement and add \
+    an "important" warning explaining which one isn't met.
 
     Rules you must follow:
     - Only change times. Never change a drug, dose, how many doses a day, the interval of \
@@ -314,7 +393,7 @@ struct ScheduleOptimizer {
     static let responseSchema: [String: Any] = [
         "type": "object",
         "additionalProperties": false,
-        "required": ["summary", "medications", "warnings"],
+        "required": ["summary", "medications", "warnings", "separations"],
         "properties": [
             "summary": [
                 "type": "string",
@@ -330,6 +409,22 @@ struct ScheduleOptimizer {
                         "key": ["type": "string"],
                         "times": ["type": "array", "items": ["type": "string", "description": "24-hour HH:mm"]],
                         "takeWithFood": ["type": "boolean"],
+                        "reason": ["type": "string"],
+                    ],
+                ],
+            ],
+            "separations": [
+                "type": "array",
+                "description": "Absorption interactions handled by timing.",
+                "items": [
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": ["blocker", "affected", "hoursBefore", "hoursAfter", "reason"],
+                    "properties": [
+                        "blocker": ["type": "string", "description": "Medication key, or meals, dairy or coffee."],
+                        "affected": ["type": "string", "description": "Medication key, or meals, dairy or coffee."],
+                        "hoursBefore": ["type": "number"],
+                        "hoursAfter": ["type": "number"],
                         "reason": ["type": "string"],
                     ],
                 ],
@@ -430,6 +525,14 @@ struct ScheduleOptimizer {
                             medicationNames: $0.medicationKeys.compactMap { names[$0] })
         }
 
+        // Check each separation against the schedule as it would be after applying.
+        let medicationsByKey = Dictionary(keyed.map { ($0.key, $0.medication) }, uniquingKeysWith: { first, _ in first })
+        let finalTimes = Dictionary(changes.map { ($0.medication.id, $0.newTimes) }, uniquingKeysWith: { first, _ in first })
+        let separations = suggestion.separations.map {
+            checkedSeparation($0, medications: medicationsByKey, finalTimes: finalTimes,
+                              mealTimes: mealTimes, preferences: preferences)
+        }
+
         func distinctTimes(_ schedules: [DoseSchedule]) -> Int {
             Set(schedules.flatMap(\.times)).count
         }
@@ -437,6 +540,7 @@ struct ScheduleOptimizer {
             summary: suggestion.summary,
             changes: changes,
             warnings: warnings,
+            separations: separations,
             distinctTimesBefore: distinctTimes(changes.map(\.medication.schedule)),
             distinctTimesAfter: distinctTimes(changes.map(\.schedule))
         )
@@ -505,6 +609,115 @@ struct ScheduleOptimizer {
 
         return ProposedScheduleChange(medication: medication, schedule: schedule, addsWithFood: addsWithFood,
                                       reason: entry.reason, problem: nil, notes: notes)
+    }
+}
+
+// MARK: - Separations
+
+extension ScheduleOptimizer {
+    /// What one side of a separation refers to, resolved against the user's data.
+    struct ResolvedTarget {
+        let name: String
+        /// Times of day it happens; empty when there's nothing to check (e.g. no coffee).
+        let times: [TimeOfDay]
+        /// Why it can't be checked, e.g. an as-needed medication with no fixed times.
+        let uncheckable: String?
+    }
+
+    static func resolve(
+        _ reference: String,
+        medications: [String: Medication],
+        finalTimes: [Medication.ID: [TimeOfDay]],
+        mealTimes: MealTimes,
+        preferences: SchedulePreferences
+    ) -> ResolvedTarget? {
+        if let medication = medications[reference] {
+            if medication.schedule.isAsNeeded {
+                return ResolvedTarget(name: medication.name, times: [],
+                                      uncheckable: "\(medication.name) is taken as needed, so keep this gap when you take it.")
+            }
+            return ResolvedTarget(name: medication.name, times: finalTimes[medication.id] ?? medication.times, uncheckable: nil)
+        }
+        switch SeparationTarget(rawValue: reference.lowercased()) {
+        case .meals:
+            return ResolvedTarget(name: "meals", times: mealTimes.meals.map(\.time), uncheckable: nil)
+        case .dairy:
+            let times = Meal.allCases.filter(preferences.dairyMeals.contains).map { meal in
+                switch meal {
+                case .breakfast: mealTimes.breakfast
+                case .lunch: mealTimes.lunch
+                case .dinner: mealTimes.dinner
+                }
+            }
+            return ResolvedTarget(name: "dairy or calcium", times: times, uncheckable: nil)
+        case .coffee:
+            return ResolvedTarget(name: "coffee", times: preferences.coffeeTime.map { [$0] } ?? [], uncheckable: nil)
+        case nil:
+            return nil
+        }
+    }
+
+    static func checkedSeparation(
+        _ separation: ScheduleSuggestion.Separation,
+        medications: [String: Medication],
+        finalTimes: [Medication.ID: [TimeOfDay]],
+        mealTimes: MealTimes,
+        preferences: SchedulePreferences
+    ) -> ProposalSeparation {
+        let blocker = resolve(separation.blocker, medications: medications, finalTimes: finalTimes,
+                              mealTimes: mealTimes, preferences: preferences)
+        let affected = resolve(separation.affected, medications: medications, finalTimes: finalTimes,
+                               mealTimes: mealTimes, preferences: preferences)
+
+        func result(violations: [String] = [], unchecked: String? = nil) -> ProposalSeparation {
+            ProposalSeparation(
+                blockerName: blocker?.name ?? separation.blocker,
+                affectedName: affected?.name ?? separation.affected,
+                hoursBefore: separation.hoursBefore, hoursAfter: separation.hoursAfter,
+                reason: separation.reason, violations: violations, uncheckedReason: unchecked
+            )
+        }
+
+        guard let blocker, let affected else {
+            return result(unchecked: "The app couldn't tell what this refers to, so it wasn't checked.")
+        }
+        if let reason = blocker.uncheckable ?? affected.uncheckable {
+            return result(unchecked: reason)
+        }
+        let violations = separationViolations(
+            blockerTimes: blocker.times, affectedTimes: affected.times,
+            hoursBefore: separation.hoursBefore, hoursAfter: separation.hoursAfter
+        ).map { blockerTime, affectedTime in
+            "\(affected.name.sentenceCased) at \(affectedTime.displayText) is too close to \(blocker.name) at \(blockerTime.displayText)."
+        }
+        return result(violations: violations)
+    }
+
+    /// Pairs (blocker time, affected time) closer than allowed: the affected dose must stay
+    /// out of the window from `hoursBefore` before each blocker dose to `hoursAfter` after it.
+    /// Measured around the clock, since both repeat daily (23:00 and 01:00 are 2 hours apart).
+    static func separationViolations(
+        blockerTimes: [TimeOfDay],
+        affectedTimes: [TimeOfDay],
+        hoursBefore: Double,
+        hoursAfter: Double
+    ) -> [(TimeOfDay, TimeOfDay)] {
+        let day = 24 * 60
+        let before = Int((hoursBefore * 60).rounded())
+        let after = Int((hoursAfter * 60).rounded())
+        var violations: [(TimeOfDay, TimeOfDay)] = []
+        for blocker in blockerTimes {
+            for affected in affectedTimes {
+                // Minutes from this blocker dose to the affected dose, and from the affected
+                // dose to the next blocker dose.
+                let sinceBlocker = ((affected.id - blocker.id) % day + day) % day
+                let untilBlocker = sinceBlocker == 0 ? 0 : day - sinceBlocker
+                if sinceBlocker < after || untilBlocker < before {
+                    violations.append((blocker, affected))
+                }
+            }
+        }
+        return violations
     }
 }
 
