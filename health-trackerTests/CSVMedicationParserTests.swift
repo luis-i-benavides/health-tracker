@@ -354,10 +354,16 @@ struct CSVLegacyFormatTests {
         #expect(result.errors.isEmpty)
     }
 
+    /// Reads a CSV from `health-trackerTests/TestData`, which is copied into the test bundle,
+    /// so tests don't need access to the source folder (macOS can block that for the simulator).
     private func testData(_ name: String) throws -> CSVParseResult {
-        let url = URL(filePath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent()
-            .appending(path: "TestData/\(name)")
+        let bundle = Bundle(for: TestBundleToken.self)
+        let resource = (name as NSString).deletingPathExtension
+        let url = try #require(
+            bundle.url(forResource: resource, withExtension: "csv")
+                ?? bundle.url(forResource: resource, withExtension: "csv", subdirectory: "TestData"),
+            "\(name) isn't in the test bundle"
+        )
         return CSVMedicationParser.parse(try String(contentsOf: url, encoding: .utf8))
     }
 
@@ -386,3 +392,6 @@ struct CSVLegacyFormatTests {
         #expect(result.errors.map(\.line) == Array(3...11))
     }
 }
+
+/// Locates the test bundle (Swift Testing suites are structs, and `Bundle(for:)` needs a class).
+private final class TestBundleToken {}
