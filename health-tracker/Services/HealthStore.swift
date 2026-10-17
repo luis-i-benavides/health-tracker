@@ -45,6 +45,7 @@ final class HealthStore {
     var measurementReminders: [MeasurementReminder] { didSet { save() } }
     var medicationRemindersEnabled = true { didSet { save() } }
     var mealTimes = MealTimes.standard { didSet { save() } }
+    var schedulePreferences = SchedulePreferences.standard { didSet { save() } }
 
     /// The most recent problem writing data to disk, if any.
     private(set) var lastSaveError: String?
@@ -93,6 +94,7 @@ final class HealthStore {
         }
         self.medicationRemindersEnabled = saved?.medicationRemindersEnabled ?? true
         self.mealTimes = saved?.mealTimes ?? .standard
+        self.schedulePreferences = saved?.schedulePreferences ?? .standard
         self.persistence = persistence
     }
 
@@ -105,7 +107,8 @@ final class HealthStore {
             measurementLogs: measurementLogs,
             measurementReminders: measurementReminders,
             medicationRemindersEnabled: medicationRemindersEnabled,
-            mealTimes: mealTimes
+            mealTimes: mealTimes,
+            schedulePreferences: schedulePreferences
         )
     }
 

@@ -120,6 +120,7 @@ struct ScheduleOptimizer {
     func propose(
         medications: [Medication],
         mealTimes: MealTimes,
+        preferences: SchedulePreferences,
         recentSymptoms: [SymptomLog],
         today: Date = .now
     ) async throws -> ScheduleProposal {
@@ -127,7 +128,7 @@ struct ScheduleOptimizer {
         let included = Self.medicationsToSchedule(medications, today: today)
         let keyed = Self.keyed(included)
         let body = Self.requestBody(
-            prompt: Self.prompt(keyed: keyed, mealTimes: mealTimes, symptoms: recentSymptoms)
+            prompt: Self.prompt(keyed: keyed, mealTimes: mealTimes, preferences: preferences, symptoms: recentSymptoms)
         )
 
         var request = URLRequest(url: Self.endpoint, timeoutInterval: 300)
@@ -148,7 +149,7 @@ struct ScheduleOptimizer {
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let suggestion = try Self.decodeResponse(data, status: status)
-        return Self.proposal(from: suggestion, keyed: keyed, mealTimes: mealTimes)
+        return Self.proposal(from: suggestion, keyed: keyed, mealTimes: mealTimes, preferences: preferences)
     }
 
     // MARK: Which medications
@@ -186,7 +187,12 @@ struct ScheduleOptimizer {
     say so in a warning instead of inventing a dose.
     3. Fewer times: use as few distinct clock times per day as possible, grouping doses \
     at meals and bedtime.
-    4. Convenience: keep doses between waking and bedtime unless a schedule requires otherwise.
+    4. Preferences: keep doses out of the hours the patient wants free (work, sleep), and \
+    lean toward their preferred time of day when a drug can go either way. Use their coffee \
+    and dairy habits: keep drugs whose absorption coffee, calcium or dairy reduces (for \
+    example levothyroxine, iron, some antibiotics, bisphosphonates) far enough from them. \
+    If a safety or food rule forces a dose into an avoided hour, do it and explain why in \
+    a warning.
 
     Rules you must follow:
     - Only change times. Never change a drug, dose, how many doses a day, the interval of \
@@ -200,7 +206,12 @@ struct ScheduleOptimizer {
     plain-language sentences.
     """
 
-    static func prompt(keyed: [(key: String, medication: Medication)], mealTimes: MealTimes, symptoms: [SymptomLog]) -> String {
+    static func prompt(
+        keyed: [(key: String, medication: Medication)],
+        mealTimes: MealTimes,
+        preferences: SchedulePreferences,
+        symptoms: [SymptomLog]
+    ) -> String {
         let formatter = PrescriptionFormatter()
         let scheduled = keyed.filter { !$0.medication.schedule.isAsNeeded }
         let asNeeded = keyed.filter { $0.medication.schedule.isAsNeeded }
@@ -226,6 +237,9 @@ struct ScheduleOptimizer {
         lunch \(mealTimes.lunch.formatted24h), dinner \(mealTimes.dinner.formatted24h), \
         bedtime \(mealTimes.bedtime.formatted24h).
 
+        Preferences:
+        \(preferenceLines(preferences, mealTimes: mealTimes).joined(separator: "\n"))
+
         Scheduled:
         \(scheduled.isEmpty ? "(none)" : scheduled.map(describe).joined(separator: "\n"))
 
@@ -238,6 +252,28 @@ struct ScheduleOptimizer {
             text += "\n\nSymptoms logged in the last 14 days:\n" + summary
         }
         return text
+    }
+
+    /// One line per preference, e.g. "- Morning coffee at 07:30".
+    static func preferenceLines(_ preferences: SchedulePreferences, mealTimes: MealTimes) -> [String] {
+        var lines: [String] = []
+        lines.append(preferences.coffeeTime.map { "- Morning coffee at \($0.formatted24h)" } ?? "- No morning coffee")
+        let dairy = Meal.allCases.filter(preferences.dairyMeals.contains).map(\.rawValue)
+        lines.append(dairy.isEmpty
+            ? "- No dairy or calcium at meals"
+            : "- Dairy or calcium usually at \(dairy.joined(separator: ", "))")
+        if let work = preferences.workHours {
+            lines.append("- Avoid doses during work, \(work.start.formatted24h)–\(work.end.formatted24h)")
+        }
+        if preferences.avoidSleepHours {
+            lines.append("- Avoid doses while asleep, \(mealTimes.bedtime.formatted24h)–\(mealTimes.wake.formatted24h)")
+        }
+        switch preferences.timePreference {
+        case .none: break
+        case .morning: lines.append("- Prefers morning doses when a drug can be taken either morning or evening")
+        case .evening: lines.append("- Prefers evening doses when a drug can be taken either morning or evening")
+        }
+        return lines
     }
 
     /// What may change for each kind of schedule.
@@ -372,7 +408,8 @@ struct ScheduleOptimizer {
     static func proposal(
         from suggestion: ScheduleSuggestion,
         keyed: [(key: String, medication: Medication)],
-        mealTimes: MealTimes
+        mealTimes: MealTimes,
+        preferences: SchedulePreferences
     ) -> ScheduleProposal {
         let byKey = Dictionary(suggestion.medications.map { ($0.key, $0) }, uniquingKeysWith: { first, _ in first })
         let scheduled = keyed.filter { !$0.medication.schedule.isAsNeeded }
@@ -384,7 +421,7 @@ struct ScheduleOptimizer {
                     reason: "", problem: "No suggestion was returned, so the current times are kept.", notes: []
                 )
             }
-            return checkedChange(for: medication, entry: entry, mealTimes: mealTimes)
+            return checkedChange(for: medication, entry: entry, mealTimes: mealTimes, preferences: preferences)
         }
 
         let names = Dictionary(keyed.map { ($0.key, $0.medication.name) }, uniquingKeysWith: { first, _ in first })
@@ -408,7 +445,8 @@ struct ScheduleOptimizer {
     static func checkedChange(
         for medication: Medication,
         entry: ScheduleSuggestion.MedicationTimes,
-        mealTimes: MealTimes
+        mealTimes: MealTimes,
+        preferences: SchedulePreferences
     ) -> ProposedScheduleChange {
         func rejected(_ problem: String) -> ProposedScheduleChange {
             ProposedScheduleChange(medication: medication, schedule: medication.schedule, addsWithFood: false,
@@ -458,6 +496,11 @@ struct ScheduleOptimizer {
         }
         if medication.foodRules.contains(.emptyStomach), times.contains(where: { mealTimes.meal(near: $0) != nil }) {
             notes.append("Should be taken on an empty stomach, but a suggested time is close to a meal.")
+        }
+        for time in times {
+            if let conflict = preferences.conflict(for: time, mealTimes: mealTimes) {
+                notes.append("\(time.displayText) is \(conflict).")
+            }
         }
 
         return ProposedScheduleChange(medication: medication, schedule: schedule, addsWithFood: addsWithFood,

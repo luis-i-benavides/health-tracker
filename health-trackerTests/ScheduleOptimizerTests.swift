@@ -27,7 +27,7 @@ struct ScheduleOptimizerRequestTests {
     @Test func promptDescribesEachMedicationAndRoutine() {
         let keyed = ScheduleOptimizer.keyed(SampleData.medications)
         let symptoms = [SymptomLog(type: .nausea, severity: .moderate, date: TimeOfDay(hour: 9, minute: 10).date())]
-        let prompt = ScheduleOptimizer.prompt(keyed: keyed, mealTimes: .standard, symptoms: symptoms)
+        let prompt = ScheduleOptimizer.prompt(keyed: keyed, mealTimes: .standard, preferences: .standard, symptoms: symptoms)
 
         #expect(prompt.contains("breakfast 08:00"))
         #expect(prompt.contains("key: m2"))
@@ -107,7 +107,7 @@ struct ScheduleSuggestionCheckTests {
     }
 
     private func check(_ medication: Medication, _ times: [String], withFood: Bool = false) -> ProposedScheduleChange {
-        ScheduleOptimizer.checkedChange(for: medication, entry: entry(times, withFood: withFood), mealTimes: .standard)
+        ScheduleOptimizer.checkedChange(for: medication, entry: entry(times, withFood: withFood), mealTimes: .standard, preferences: .standard)
     }
 
     @Test func dailyTimesAreReplaced() {
@@ -162,7 +162,7 @@ struct ScheduleSuggestionCheckTests {
     @Test func missingSuggestionKeepsCurrentTimes() {
         let suggestion = ScheduleSuggestion(summary: "", medications: [], warnings: [])
         let proposal = ScheduleOptimizer.proposal(
-            from: suggestion, keyed: ScheduleOptimizer.keyed([SampleData.lisinopril]), mealTimes: .standard
+            from: suggestion, keyed: ScheduleOptimizer.keyed([SampleData.lisinopril]), mealTimes: .standard, preferences: .standard
         )
         #expect(proposal.changes.first?.problem != nil)
         #expect(!proposal.hasChanges)
@@ -189,7 +189,7 @@ struct ScheduleSuggestionCheckTests {
             warnings: []
         )
         let proposal = ScheduleOptimizer.proposal(
-            from: suggestion, keyed: ScheduleOptimizer.keyed(store.medications), mealTimes: .standard
+            from: suggestion, keyed: ScheduleOptimizer.keyed(store.medications), mealTimes: .standard, preferences: .standard
         )
         store.applyChanges(of: proposal)
         #expect(store.medications[0].foodRules.contains(.withFood))
@@ -233,5 +233,74 @@ struct MedicationEditingTests {
         let meals = MealTimes.standard
         #expect(meals.meal(near: TimeOfDay(hour: 8, minute: 20)) == "breakfast")
         #expect(meals.meal(near: TimeOfDay(hour: 10, minute: 0)) == nil)
+    }
+}
+
+@MainActor
+struct SchedulePreferenceTests {
+    private func t(_ hour: Int, _ minute: Int = 0) -> TimeOfDay { TimeOfDay(hour: hour, minute: minute) }
+
+    private var busy: SchedulePreferences {
+        SchedulePreferences(
+            coffeeTime: t(7, 30), dairyMeals: [.breakfast, .dinner],
+            workHours: TimeWindow(start: t(9), end: t(17)), avoidSleepHours: true, timePreference: .morning
+        )
+    }
+
+    @Test func windowsCanWrapPastMidnight() {
+        let day = TimeWindow(start: t(9), end: t(17))
+        #expect(day.contains(t(9)))
+        #expect(!day.contains(t(17)))
+        let night = TimeWindow(start: t(22), end: t(6))
+        #expect(night.contains(t(23)))
+        #expect(night.contains(t(2)))
+        #expect(!night.contains(t(12)))
+    }
+
+    @Test func conflictsWithWorkAndSleepHours() {
+        let meals = MealTimes.standard
+        #expect(busy.conflict(for: t(12), mealTimes: meals) == "during your work hours")
+        #expect(busy.conflict(for: t(2), mealTimes: meals) == "during your sleep hours")
+        #expect(busy.conflict(for: t(8), mealTimes: meals) == nil)
+        var relaxed = busy
+        relaxed.avoidSleepHours = false
+        relaxed.workHours = nil
+        #expect(relaxed.conflict(for: t(2), mealTimes: meals) == nil)
+    }
+
+    @Test func promptListsEachPreference() {
+        let prompt = ScheduleOptimizer.prompt(
+            keyed: ScheduleOptimizer.keyed([SampleData.lisinopril]), mealTimes: .standard, preferences: busy, symptoms: []
+        )
+        #expect(prompt.contains("- Morning coffee at 07:30"))
+        #expect(prompt.contains("- Dairy or calcium usually at breakfast, dinner"))
+        #expect(prompt.contains("- Avoid doses during work, 09:00–17:00"))
+        #expect(prompt.contains("- Avoid doses while asleep, 22:30–07:00"))
+        #expect(prompt.contains("Prefers morning doses"))
+
+        let plain = ScheduleOptimizer.preferenceLines(.standard, mealTimes: .standard)
+        #expect(plain.contains("- No morning coffee"))
+        #expect(plain.contains("- No dairy or calcium at meals"))
+        #expect(!plain.contains { $0.contains("work") })
+    }
+
+    @Test func doseInAvoidedHoursGetsANote() {
+        let entry = ScheduleSuggestion.MedicationTimes(key: "m1", times: ["13:00"], takeWithFood: false, reason: "")
+        let change = ScheduleOptimizer.checkedChange(
+            for: SampleData.lisinopril, entry: entry, mealTimes: .standard, preferences: busy
+        )
+        #expect(change.problem == nil)
+        #expect(change.notes.contains { $0.contains("during your work hours") })
+    }
+
+    @Test func preferencesAreSaved() {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "Preference Tests \(UUID().uuidString)")
+        let persistence = HealthPersistence(fileURL: directory.appending(path: "HealthData.json"))
+        let store = HealthStore(persistence: persistence)
+        #expect(store.schedulePreferences == .standard)
+        store.schedulePreferences = busy
+
+        #expect(HealthStore(persistence: persistence).schedulePreferences == busy)
     }
 }

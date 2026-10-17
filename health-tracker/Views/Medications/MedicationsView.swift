@@ -51,6 +51,7 @@ struct MedicationsView: View {
 
                 if !store.medications.isEmpty {
                     DailyRoutineSection(mealTimes: $store.mealTimes)
+                    SchedulePreferencesSection(preferences: $store.schedulePreferences)
                 }
 
                 if !scheduled.isEmpty {

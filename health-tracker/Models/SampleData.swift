@@ -229,7 +229,8 @@ extension SampleData {
         return ScheduleOptimizer.proposal(
             from: suggestion,
             keyed: ScheduleOptimizer.keyed(medications),
-            mealTimes: MealTimes.standard
+            mealTimes: MealTimes.standard,
+            preferences: SchedulePreferences.standard
         )
     }
 }

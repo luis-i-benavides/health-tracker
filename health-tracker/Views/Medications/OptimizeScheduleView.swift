@@ -33,6 +33,7 @@ struct OptimizeScheduleView: View {
                     proposalSections(proposal)
                 } else {
                     DailyRoutineSection(mealTimes: $store.mealTimes)
+                    SchedulePreferencesSection(preferences: $store.schedulePreferences)
                     apiKeySection
                     if let errorMessage {
                         Section {
@@ -230,6 +231,7 @@ struct OptimizeScheduleView: View {
                 proposal = try await ScheduleOptimizer(apiKey: apiKey).propose(
                     medications: store.medications,
                     mealTimes: store.mealTimes,
+                    preferences: store.schedulePreferences,
                     recentSymptoms: symptoms
                 )
             } catch {

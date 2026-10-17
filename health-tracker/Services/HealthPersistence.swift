@@ -27,6 +27,8 @@ struct HealthSnapshot: Codable, Equatable {
     var medicationRemindersEnabled: Bool
     /// Added after version 1 shipped; `nil` in older files.
     var mealTimes: MealTimes?
+    /// Added after version 1 shipped; `nil` in older files.
+    var schedulePreferences: SchedulePreferences?
 }
 
 struct HealthPersistence {
