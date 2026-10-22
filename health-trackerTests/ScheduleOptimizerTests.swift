@@ -38,6 +38,19 @@ struct ScheduleOptimizerRequestTests {
         let asNeededPart = prompt.components(separatedBy: "As needed (not scheduled):").last ?? ""
         #expect(asNeededPart.contains("Albuterol"))
         #expect(prompt.contains("- Nausea: 1 time(s) (worst: moderate), at 09:10"))
+        // No instructions, no section.
+        #expect(!prompt.contains("Additional instructions"))
+    }
+
+    @Test func promptIncludesTrimmedInstructions() {
+        let keyed = ScheduleOptimizer.keyed(SampleData.medications)
+        let prompt = ScheduleOptimizer.prompt(keyed: keyed, mealTimes: .standard, preferences: .standard,
+                                              symptoms: [], instructions: "  I walk at 18:00.\n")
+        #expect(prompt.hasSuffix("Additional instructions from the patient:\nI walk at 18:00."))
+
+        let blank = ScheduleOptimizer.prompt(keyed: keyed, mealTimes: .standard, preferences: .standard,
+                                             symptoms: [], instructions: " \n ")
+        #expect(!blank.contains("Additional instructions"))
     }
 
     @Test func finishedCoursesAreLeftOut() {

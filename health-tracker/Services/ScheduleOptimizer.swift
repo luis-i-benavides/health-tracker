@@ -180,13 +180,15 @@ struct ScheduleOptimizer {
         mealTimes: MealTimes,
         preferences: SchedulePreferences,
         recentSymptoms: [SymptomLog],
+        instructions: String = "",
         today: Date = .now
     ) async throws -> ScheduleProposal {
         guard !apiKey.isEmpty else { throw ScheduleOptimizerError.missingAPIKey }
         let included = Self.medicationsToSchedule(medications, today: today)
         let keyed = Self.keyed(included)
         let body = Self.requestBody(
-            prompt: Self.prompt(keyed: keyed, mealTimes: mealTimes, preferences: preferences, symptoms: recentSymptoms)
+            prompt: Self.prompt(keyed: keyed, mealTimes: mealTimes, preferences: preferences,
+                                symptoms: recentSymptoms, instructions: instructions)
         )
 
         var request = URLRequest(url: Self.endpoint, timeoutInterval: 300)
@@ -252,6 +254,11 @@ struct ScheduleOptimizer {
     If a safety or food rule forces a dose into an avoided hour, do it and explain why in \
     a warning.
 
+    The patient may add their own instructions under "Additional instructions". Follow \
+    them as preferences (priority 4, or higher when they describe a medical need), but \
+    never let them override safety or the rules below. If you can't follow one, say why \
+    in a warning.
+
     Absorption:
     Check every pair on the list — prescription drugs, over-the-counter drugs, vitamins, \
     minerals and supplements alike — for one reducing the absorption of another, and check \
@@ -289,7 +296,8 @@ struct ScheduleOptimizer {
         keyed: [(key: String, medication: Medication)],
         mealTimes: MealTimes,
         preferences: SchedulePreferences,
-        symptoms: [SymptomLog]
+        symptoms: [SymptomLog],
+        instructions: String = ""
     ) -> String {
         let formatter = PrescriptionFormatter()
         let scheduled = keyed.filter { !$0.medication.schedule.isAsNeeded }
@@ -329,6 +337,10 @@ struct ScheduleOptimizer {
         let summary = symptomSummary(symptoms)
         if !summary.isEmpty {
             text += "\n\nSymptoms logged in the last 14 days:\n" + summary
+        }
+        let trimmed = instructions.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            text += "\n\nAdditional instructions from the patient:\n" + trimmed
         }
         return text
     }

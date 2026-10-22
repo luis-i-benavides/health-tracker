@@ -14,6 +14,8 @@ struct OptimizeScheduleView: View {
 
     @State private var apiKey = KeychainStore.anthropicAPIKey.read() ?? ""
     @State private var isEditingKey = (KeychainStore.anthropicAPIKey.read() ?? "").isEmpty
+    /// Free-text instructions added to the request, e.g. "I take my walk at 6 pm".
+    @State private var instructions = ""
     @State private var isRequesting = false
     @State private var errorMessage: String?
     @State private var proposal: ScheduleProposal?
@@ -36,6 +38,7 @@ struct OptimizeScheduleView: View {
                 } else {
                     DailyRoutineSection(mealTimes: $store.mealTimes)
                     SchedulePreferencesSection(preferences: $store.schedulePreferences)
+                    instructionsSection
                     apiKeySection
                     if let errorMessage {
                         Section {
@@ -71,6 +74,17 @@ struct OptimizeScheduleView: View {
 
     // MARK: - Before asking
 
+    private var instructionsSection: some View {
+        Section {
+            TextField("e.g. I'd rather take everything after breakfast", text: $instructions, axis: .vertical)
+                .lineLimit(3...8)
+        } header: {
+            Text("Additional Instructions")
+        } footer: {
+            Text("Optional. Claude follows these when it can, but never at the expense of safety or your prescriptions.")
+        }
+    }
+
     @ViewBuilder
     private var apiKeySection: some View {
         Section {
@@ -94,7 +108,7 @@ struct OptimizeScheduleView: View {
         } header: {
             Text("Claude")
         } footer: {
-            Text("Your medication list, daily routine and the last 14 days of symptoms are sent to Anthropic's Claude (\(ScheduleOptimizer.model)) to make the suggestion. Nothing changes until you apply it.")
+            Text("Your medication list, daily routine, any instructions you add and the last 14 days of symptoms are sent to Anthropic's Claude (\(ScheduleOptimizer.model)) to make the suggestion. Nothing changes until you apply it.")
         }
     }
 
@@ -305,7 +319,8 @@ struct OptimizeScheduleView: View {
                     medications: store.medications,
                     mealTimes: store.mealTimes,
                     preferences: store.schedulePreferences,
-                    recentSymptoms: symptoms
+                    recentSymptoms: symptoms,
+                    instructions: instructions
                 )
             } catch {
                 errorMessage = error.localizedDescription
