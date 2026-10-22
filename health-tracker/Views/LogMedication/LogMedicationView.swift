@@ -158,7 +158,7 @@ struct LogMedicationView: View {
                     }
                 }
             } else if store.medications.isEmpty {
-                Text("Import your medication list from the Import tab first.")
+                Text("Add your medications on the Medications tab first.")
                     .foregroundStyle(.secondary)
             } else {
                 Picker("Medication", selection: $medicationID) {

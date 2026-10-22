@@ -2,7 +2,7 @@
 //  EditMedicationView.swift
 //  health-tracker
 //
-//  Sheet for adding or editing a medication: every field an imported CSV row can set.
+//  Sheet for adding or editing a medication: name, strength, dose, schedule, food rules, course and purpose.
 //
 
 import SwiftUI

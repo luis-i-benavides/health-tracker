@@ -21,9 +21,6 @@ struct ContentView: View {
             Tab("Reminders", systemImage: "bell") {
                 RemindersCardView()
             }
-            Tab("Import", systemImage: "square.and.arrow.down") {
-                ImportCSVStepsView()
-            }
         }
     }
 }

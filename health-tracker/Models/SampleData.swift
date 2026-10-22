@@ -184,17 +184,6 @@ enum SampleData {
             activeSince: monthAgo
         ),
     ]
-
-    /// Prescription-format CSV for the import preview: four valid rows and two with errors.
-    static let csv = """
-    name,strength,form,quantity,route,frequency,food,max_per_24h,duration_days,purpose
-    Metformin,500 mg,tablet,1,by mouth,twice daily,with food;avoid alcohol,,,diabetes
-    Amoxicillin,500 mg,capsule,1,by mouth,TID,with food,,10,infection
-    Albuterol HFA,90 mcg,puff,2,inhaled,as needed,,3,,wheezing
-    Latanoprost,0.005%,drop,1,eye,at bedtime,,,,glaucoma
-    Aspirin,81,tablet,1,by mouth,once daily,,,,
-    Ibuprofen,200 mg,tablet,1,by mouth,as needed,,,,pain
-    """
 }
 
 extension SampleData {

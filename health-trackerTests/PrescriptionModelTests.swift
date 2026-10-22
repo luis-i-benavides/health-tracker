@@ -184,26 +184,9 @@ struct MedicationTests {
         #expect(drops.doseAmount == nil)
     }
 
-    @Test func legacyInitTreatsDrugUnitsAsStrength() throws {
-        let medication = Medication(name: "Lisinopril", dosage: 10, unit: "mg", times: [TimeOfDay(hour: 8, minute: 0)])
-        #expect(medication.strength == Strength(value: 10, unit: "mg"))
-        #expect(medication.form == .tablet)
-        #expect(medication.quantity == 1)
-        #expect(medication.route == .byMouth)
-        #expect(PrescriptionFormatter(locale: Locale(identifier: "en_US")).doseText(for: medication) == "1 tablet (10 mg)")
-    }
-
-    @Test func legacyInitTreatsFormUnitsAsQuantity() {
-        let medication = Medication(name: "Test", dosage: 2, unit: "tablets", times: [])
-        #expect(medication.strength == nil)
-        #expect(medication.form == .tablet)
-        #expect(medication.quantity == 2)
-        #expect(PrescriptionFormatter(locale: Locale(identifier: "en_US")).doseText(for: medication) == "2 tablets")
-    }
-
     @Test func adoptingIdentityKeepsNewInstructions() {
-        let old = Medication(name: "Lisinopril", dosage: 10, unit: "mg", times: [],
-                             addedOn: Date(timeIntervalSince1970: 0))
+        let old = Medication(name: "Lisinopril", strength: Strength(value: 10, unit: "mg"),
+                             schedule: .daily(times: []), addedOn: Date(timeIntervalSince1970: 0))
         let new = Medication(name: "lisinopril", strength: Strength(value: 20, unit: "mg"),
                              schedule: .atBedtime(TimeOfDay(hour: 22, minute: 0)), foodRules: [.withFood])
         let merged = new.adoptingIdentity(of: old)
@@ -225,15 +208,6 @@ struct GrainsAndPresetTests {
         // Grams stay grams.
         #expect(Strength(parsing: "1 g")?.unit == "g")
         #expect(PrescriptionFormatter().strengthText(strength) == "5 gr")
-    }
-
-    @Test func csvImportAcceptsGrains() {
-        let result = CSVMedicationParser.parse("""
-        name,strength,form,quantity,frequency
-        Aspirin,5 gr,tablet,1,once daily
-        """)
-        #expect(result.errors.isEmpty)
-        #expect(result.medications.first?.strength?.unit == "gr")
     }
 
     @Test func presetsUseMealTimes() {

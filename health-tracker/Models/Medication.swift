@@ -150,20 +150,4 @@ struct Medication: Identifiable, Hashable, Codable {
             foodRules: foodRules, course: course, purpose: purpose, addedOn: existing.addedOn
         )
     }
-
-    // MARK: - Legacy CSV format
-
-    /// Builds a medication from the original `name,dosage,unit,times` CSV format: a daily
-    /// medication taken by mouth. "500 mg" becomes the strength of one tablet; a unit that's
-    /// a dose form ("1 tablet", "12 units", "5 mL") becomes the quantity instead.
-    init(id: UUID = UUID(), name: String, dosage: Double, unit: String, times: [TimeOfDay], addedOn: Date = .now) {
-        let isStrengthUnit = Strength.normalizedUnit(unit).map { !["units", "mL"].contains($0) } ?? false
-        if !isStrengthUnit, let form = DoseForm.parse(unit) {
-            self.init(id: id, name: name, strength: nil, form: form, quantity: dosage,
-                      schedule: .daily(times: times.sorted()), addedOn: addedOn)
-        } else {
-            self.init(id: id, name: name, strength: Strength(value: dosage, unit: unit),
-                      schedule: .daily(times: times.sorted()), addedOn: addedOn)
-        }
-    }
 }

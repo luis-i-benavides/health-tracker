@@ -159,7 +159,7 @@ final class HealthStore {
     }
 
     /// A day's doses that weren't tied to a scheduled slot (extra doses), with their medication.
-    /// Also includes logs whose slot no longer exists (e.g. after re-importing the CSV).
+    /// Also includes logs whose slot no longer exists (e.g. after importing a schedule).
     func extraDoses(on day: Date = .now, calendar: Calendar = .current) -> [(Medication, MedicationLog)] {
         let slotted = Set(doses(on: day, calendar: calendar).compactMap(\.log?.id))
         return medicationLogs
@@ -273,24 +273,8 @@ final class HealthStore {
 
     // MARK: - Import
 
-    /// Reads a user-selected CSV file and returns the parse result without applying it.
-    func readCSV(from url: URL) throws -> CSVParseResult {
-        // Files from the document picker are outside the sandbox and need scoped access.
-        let didAccess = url.startAccessingSecurityScopedResource()
-        defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
-        let text = try String(contentsOf: url, encoding: .utf8)
-        return CSVMedicationParser.parse(text)
-    }
-
-    /// Replaces the medication list and reschedules notifications.
-    /// Medications already in the list (matched by name) keep their identity and start date,
-    /// so their logged history stays linked after re-importing an updated CSV.
-    func applyImport(_ imported: [Medication]) async {
-        medications = merged(imported)
-        await rescheduleNotifications()
-    }
-
-    /// The imported list, with medications already present (same name) keeping their id and start date.
+    /// The imported list, with medications already present (same name) keeping their id and
+    /// start date, so their logged history stays linked.
     func merged(_ imported: [Medication]) -> [Medication] {
         imported.map { new in
             guard let existing = medications.first(where: {

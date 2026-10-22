@@ -149,7 +149,7 @@ struct TodayTimelineView: View {
         switch filter {
         case .all:
             isToday
-                ? "Import your medication list from the Import tab, or turn on measurement reminders."
+                ? "Add your medications on the Medications tab, or turn on measurement reminders."
                 : "No doses, readings, or symptoms on this day."
         case .medications: "No doses scheduled or logged on this day."
         case .measurements: "No readings scheduled or recorded on this day."
