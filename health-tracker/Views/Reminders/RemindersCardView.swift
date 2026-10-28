@@ -26,6 +26,8 @@ struct RemindersCardView: View {
 
                     medicationsCard
 
+                    AlarmsCardView()
+
                     Text("Measurements")
                         .font(.title3.bold())
                         .frame(maxWidth: .infinity, alignment: .leading)

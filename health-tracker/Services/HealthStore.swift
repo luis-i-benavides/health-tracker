@@ -46,6 +46,7 @@ final class HealthStore {
     var medicationRemindersEnabled = true { didSet { save() } }
     var mealTimes = MealTimes.standard { didSet { save() } }
     var schedulePreferences = SchedulePreferences.standard { didSet { save() } }
+    var alarmSettings = AlarmSettings.standard { didSet { save() } }
 
     /// The most recent problem writing data to disk, if any.
     private(set) var lastSaveError: String?
@@ -58,7 +59,17 @@ final class HealthStore {
     /// last dose that does have a reminder. Topped up each time the app becomes active.
     private(set) var coursesWithRemindersEndingEarly: [Medication.ID: Date] = [:]
 
+    /// The most recent problem setting alarms, shown on the Reminders tab.
+    private(set) var lastAlarmError: String?
+    /// Alarms currently set by this app.
+    private(set) var scheduledAlarmCount = 0
+    /// What the current alarms were created from, to skip replacing them when nothing changed.
+    private var scheduledAlarmSignature: String?
+    private var isRefreshingAlarms = false
+    private var alarmRefreshPending = false
+
     private let scheduler = NotificationScheduler()
+    private let alarmScheduler = AlarmScheduler()
     /// Where data is saved; `nil` keeps everything in memory (previews and tests).
     private let persistence: HealthPersistence?
 
@@ -95,6 +106,9 @@ final class HealthStore {
         self.medicationRemindersEnabled = saved?.medicationRemindersEnabled ?? true
         self.mealTimes = saved?.mealTimes ?? .standard
         self.schedulePreferences = saved?.schedulePreferences ?? .standard
+        // Only the app's own data file can predate alarm settings (not test files).
+        self.alarmSettings = saved?.alarmSettings
+            ?? (persistence.fileURL == HealthPersistence.standard.fileURL ? Self.alarmSettingsFromEarlierVersion() : .standard)
         self.persistence = persistence
     }
 
@@ -108,7 +122,8 @@ final class HealthStore {
             measurementReminders: measurementReminders,
             medicationRemindersEnabled: medicationRemindersEnabled,
             mealTimes: mealTimes,
-            schedulePreferences: schedulePreferences
+            schedulePreferences: schedulePreferences,
+            alarmSettings: alarmSettings
         )
     }
 
@@ -284,11 +299,15 @@ final class HealthStore {
         }
     }
 
-    // MARK: - Notifications
+    // MARK: - Notifications and alarms
 
+    /// Brings alarms (when on) and notifications up to date with the schedule. While alarms are
+    /// set, notifications are silent so each dose doesn't sound twice; they still appear, with
+    /// the dose details, and keep reminding if alarms ever can't be set.
     func rescheduleNotifications() async {
         // Bump on every exit path, including when permission is denied.
         defer { scheduleVersion += 1 }
+        await refreshAlarms()
         do {
             guard try await scheduler.requestAuthorization() else {
                 lastSchedulingError = "Notifications are turned off for Health Tracker in Settings."
@@ -296,7 +315,8 @@ final class HealthStore {
             }
             let plan = try await scheduler.reschedule(
                 medications: medicationRemindersEnabled ? medications : [],
-                measurementReminders: measurementReminders
+                measurementReminders: measurementReminders,
+                silent: alarmsAreSet
             )
             coursesWithRemindersEndingEarly = plan.lastScheduledDose
             lastSchedulingError = nil
@@ -314,7 +334,96 @@ final class HealthStore {
         case .authorized, .provisional, .ephemeral:
             await rescheduleNotifications()
         default:
-            break
+            // Alarms don't depend on notification permission.
+            await refreshAlarms()
+            scheduleVersion += 1
         }
+    }
+
+    /// The alarms the current schedule calls for (empty while medication reminders are off and
+    /// no measurement reminders are on).
+    var alarmPlan: [PlannedAlarm] {
+        AlarmPlanner.plan(
+            medications: medicationRemindersEnabled ? medications : [],
+            measurementReminders: measurementReminders
+        )
+    }
+
+    /// Whether alarms are on and actually set, so notifications can stay quiet.
+    private var alarmsAreSet: Bool {
+        alarmSettings.isEnabled && alarmScheduler.isAuthorized && scheduledAlarmCount > 0
+    }
+
+    /// Turns alarms on (asking for permission the first time) or off, then reschedules.
+    func setAlarmsEnabled(_ enabled: Bool) async {
+        if enabled {
+            do {
+                try await alarmScheduler.requestAuthorization()
+            } catch {
+                lastAlarmError = error.localizedDescription
+                return
+            }
+        }
+        alarmSettings.isEnabled = enabled
+        await rescheduleNotifications()
+    }
+
+    /// Makes the app's alarms match `alarmPlan` and `alarmSettings`. Runs one refresh at a time
+    /// (overlapping ones would create duplicates) and repeats if more changes came in meanwhile.
+    func refreshAlarms() async {
+        if isRefreshingAlarms {
+            alarmRefreshPending = true
+            return
+        }
+        isRefreshingAlarms = true
+        defer { isRefreshingAlarms = false }
+        repeat {
+            alarmRefreshPending = false
+            await performAlarmRefresh()
+        } while alarmRefreshPending
+    }
+
+    private func performAlarmRefresh() async {
+        defer { scheduledAlarmCount = alarmScheduler.scheduledCount() }
+        guard alarmSettings.isEnabled else {
+            if scheduledAlarmCount > 0 || alarmScheduler.scheduledCount() > 0 {
+                try? alarmScheduler.removeAll()
+            }
+            scheduledAlarmSignature = nil
+            lastAlarmError = nil
+            return
+        }
+
+        let plan = alarmPlan
+        let signature = Self.signature(of: plan, settings: alarmSettings)
+        let upToDate = signature == scheduledAlarmSignature && alarmScheduler.scheduledCount() == plan.count
+        // Never replace alarms while one is ringing or snoozed; the next refresh catches up.
+        guard !upToDate, !alarmScheduler.hasAlarmInProgress() else { return }
+
+        do {
+            try await alarmScheduler.replaceAll(with: plan, settings: alarmSettings)
+            scheduledAlarmSignature = signature
+            lastAlarmError = nil
+        } catch {
+            scheduledAlarmSignature = nil
+            lastAlarmError = error.localizedDescription
+        }
+    }
+
+    /// Before alarms updated themselves, they were created with a button and their snooze length
+    /// and sound were kept in user defaults. If such alarms exist, keep them on with those choices.
+    private static func alarmSettingsFromEarlierVersion() -> AlarmSettings {
+        var settings = AlarmSettings.standard
+        guard AlarmScheduler().scheduledCount() > 0 else { return settings }
+        let defaults = UserDefaults.standard
+        settings.isEnabled = true
+        if let minutes = defaults.object(forKey: "alarmSnoozeMinutes") as? Int { settings.snoozeMinutes = minutes }
+        if let sound = defaults.string(forKey: "alarmSound").flatMap(AlarmSound.init(rawValue:)) { settings.sound = sound }
+        return settings
+    }
+
+    private static func signature(of plan: [PlannedAlarm], settings: AlarmSettings) -> String {
+        let alarms = plan.map { "\($0.id) \($0.title)" }.joined(separator: "|")
+        return "\(settings.snoozeMinutes) \(settings.sound.rawValue) \(alarms)"
     }
 }

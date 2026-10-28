@@ -61,13 +61,16 @@ struct NotificationScheduler {
 
     /// Replaces all medication and measurement notifications with the plan from `ReminderPlanner`,
     /// and returns the plan so callers can report courses whose reminders end early.
+    /// `silent` notifications still appear, but make no sound (used while alarms ring instead).
     @discardableResult
-    func reschedule(medications: [Medication], measurementReminders: [MeasurementReminder]) async throws -> ReminderPlan {
+    func reschedule(
+        medications: [Medication], measurementReminders: [MeasurementReminder], silent: Bool = false
+    ) async throws -> ReminderPlan {
         let plan = ReminderPlanner.plan(medications: medications, measurementReminders: measurementReminders)
 
         await removeAll(withPrefixes: [Self.medicationPrefix, Self.measurementPrefix])
         for reminder in plan.reminders {
-            try await center.add(Self.request(for: reminder))
+            try await center.add(Self.request(for: reminder, silent: silent))
         }
 
         if plan.droppedRepeatingCount > 0 {
@@ -88,11 +91,11 @@ struct NotificationScheduler {
 
     // MARK: - Request builder
 
-    static func request(for reminder: PlannedReminder) -> UNNotificationRequest {
+    static func request(for reminder: PlannedReminder, silent: Bool = false) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
         content.title = reminder.title
         content.body = reminder.body
-        content.sound = .default
+        content.sound = silent ? nil : .default
         if let medicationID = reminder.medicationID {
             content.userInfo = ["medicationID": medicationID.uuidString]
         }

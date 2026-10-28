@@ -11,14 +11,51 @@
     ],
   },
   "files": [
-    { "kind": "folder", "path": "health-tracker", "target-membership": [ "health-tracker" ] },
-    { "kind": "folder", "path": "health-trackerTests", "target-membership": [ "health-trackerTests" ] },
     {
+      "kind": "folder",
+      "path": "health-tracker",
+      "target-membership": [
+        "health-tracker",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "health-tracker",
+          "exclusions": [
+            "Info.plist",
+          ],
+        },
+      ],
+    },
+    { "kind": "folder", "path": "health-trackerTests", "target-membership": [ "health-trackerTests" ] },
+    { "kind": "folder", "path": "Shared", "target-membership": [ "HealthTrackerAlarmsExtension", "health-tracker" ] },
+    {
+      "kind": "folder",
+      "path": "HealthTrackerAlarms",
+      "target-membership": [
+        "HealthTrackerAlarmsExtension",
+      ],
+      "membership-exceptions": [
+        {
+          "target": "HealthTrackerAlarmsExtension",
+          "exclusions": [
+            "Info.plist",
+          ],
+        },
+      ],
+    }, {
+      "kind": "group",
+      "name": "Frameworks",
+      "children": [
+        { "path": "/System/Library/Frameworks/WidgetKit.framework", "target-membership": [ "HealthTrackerAlarmsExtension/frameworks" ] },
+        { "path": "/System/Library/Frameworks/SwiftUI.framework", "target-membership": [ "HealthTrackerAlarmsExtension/frameworks" ] },
+      ],
+    }, {
       "kind": "group",
       "name": "Products",
       "children": [
         { "path": "<PRODUCTS>/health-tracker.app", "id": "C042BE53307BCE2E00807F25", "type": "wrapper.application", "index": false },
         { "path": "<PRODUCTS>/health-trackerTests.xctest", "id": "C04E4CDD30816637009277F3", "type": "wrapper.cfbundle", "index": false },
+        { "path": "<PRODUCTS>/HealthTrackerAlarmsExtension.appex", "id": "C0758A1F309278E900555B0A", "type": "wrapper.app-extension", "index": false, "target-membership": [ { "build-phase": "health-tracker/copy/Embed Foundation Extensions", "header-preservation": "remove-on-copy" } ] },
       ],
     },
   ],
@@ -28,10 +65,18 @@
       "id": "C042BE52307BCE2E00807F25",
       "product": "Products/health-tracker.app",
       "product-type": "application",
+      "dependencies": [
+        "HealthTrackerAlarmsExtension",
+      ],
       "build-phases": [
         "compile-sources",
         "frameworks",
         "resources",
+        {
+          "kind": "copy",
+          "name": "Embed Foundation Extensions",
+          "bundle-base-path": "plugins-directory",
+        },
       ],
       "build-settings": {
         "ASSETCATALOG_COMPILER_APPICON_NAME": "PillIcon",
@@ -42,8 +87,10 @@
         "DEVELOPMENT_TEAM": "BS3G9PDDRP",
         "ENABLE_PREVIEWS": "YES",
         "GENERATE_INFOPLIST_FILE": "YES",
+        "INFOPLIST_FILE": "health-tracker/Info.plist",
         "INFOPLIST_KEY_CFBundleDisplayName": "Health Tracker",
         "INFOPLIST_KEY_ITSAppUsesNonExemptEncryption": "NO",
+        "INFOPLIST_KEY_NSSupportsLiveActivities": "YES",
         "INFOPLIST_KEY_UIApplicationSceneManifest_Generation": "YES",
         "INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents": "YES",
         "INFOPLIST_KEY_UILaunchScreen_Generation": "YES",
@@ -96,6 +143,53 @@
         "SWIFT_VERSION": "5.0",
         "TARGETED_DEVICE_FAMILY": "1,2",
         "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/health-tracker.app/health-tracker",
+      },
+    }, {
+      "name": "HealthTrackerAlarmsExtension",
+      "id": "C0758A1E309278E900555B0A",
+      "product": "Products/HealthTrackerAlarmsExtension.appex",
+      "product-type": "app-extension",
+      "build-phases": [
+        "compile-sources",
+        "frameworks",
+        "resources",
+      ],
+      "build-settings": {
+        "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+        "ASSETCATALOG_COMPILER_WIDGET_BACKGROUND_COLOR_NAME": "WidgetBackground",
+        "CODE_SIGN_STYLE": "Automatic",
+        "CURRENT_PROJECT_VERSION": "1",
+        "DEVELOPMENT_TEAM": "BS3G9PDDRP",
+        "ENABLE_APP_SANDBOX": "YES",
+        "GENERATE_INFOPLIST_FILE": "YES",
+        "INFOPLIST_FILE": "HealthTrackerAlarms/Info.plist",
+        "INFOPLIST_KEY_CFBundleDisplayName": "Health Tracker Alarms",
+        "INFOPLIST_KEY_NSHumanReadableCopyright": "",
+        "IPHONEOS_DEPLOYMENT_TARGET": "27.2",
+        "LD_RUNPATH_SEARCH_PATHS": [
+          "$(inherited)",
+          "@executable_path/Frameworks",
+          "@executable_path/../../Frameworks",
+        ],
+        "LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]": [
+          "$(inherited)",
+          "@executable_path/../Frameworks",
+          "@executable_path/../../../../Frameworks",
+        ],
+        "MACOSX_DEPLOYMENT_TARGET": "27.2",
+        "MARKETING_VERSION": "1.0",
+        "PRODUCT_BUNDLE_IDENTIFIER": "luisbenavides.health-tracker.HealthTrackerAlarms",
+        "PRODUCT_NAME": "$(TARGET_NAME)",
+        "SDKROOT": "iphoneos",
+        "SKIP_INSTALL": "YES",
+        "STRING_CATALOG_GENERATE_SYMBOLS": "YES",
+        "SUPPORTED_PLATFORMS": "iphoneos iphonesimulator",
+        "SWIFT_APPROACHABLE_CONCURRENCY": "YES",
+        "SWIFT_EMIT_LOC_STRINGS": "YES",
+        "SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY": "YES",
+        "SWIFT_VERSION": "5.0",
+        "TARGETED_DEVICE_FAMILY": "1,2",
+        "XROS_DEPLOYMENT_TARGET": "27.2",
       },
     },
   ],
